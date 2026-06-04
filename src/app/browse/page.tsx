@@ -38,7 +38,10 @@ export default async function BrowsePage({
   }
 
   const [moviesPayload, categoriesPayload, countriesPayload] = await Promise.all([
-    fetchKkJson(`/v1/api/danh-sach/${encodeURIComponent(type)}?${query.toString()}`) as Promise<BrowsePayload | null>,
+    fetchKkJson(type === "phim-moi-cap-nhat"
+      ? `/danh-sach/phim-moi-cap-nhat-v3?page=${encodeURIComponent(params.page || "1")}`
+      : `/v1/api/danh-sach/${encodeURIComponent(type)}?${query.toString()}`
+    ) as Promise<BrowsePayload | null>,
     fetchKkJson("/the-loai") as Promise<Option[] | { data?: Option[] } | null>,
     fetchKkJson("/quoc-gia") as Promise<Option[] | { data?: Option[] } | null>,
   ]);

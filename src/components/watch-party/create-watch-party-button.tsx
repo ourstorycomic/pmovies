@@ -44,7 +44,7 @@ export function CreateWatchPartyButton({
           episode_name: episodeName,
           intro_start_time: introStart,
           intro_end_time: introEnd,
-          episodes: movie.episodes?.flatMap((server) => server.server_data).filter((episode) => episode.link_m3u8).map((episode) => ({
+          episodes: movie.episodes?.flatMap((server) => server.server_data).filter((episode) => episode.link_m3u8 && !episode.link_m3u8.includes("url=null") && !episode.link_m3u8.includes("url=undefined")).map((episode) => ({
             name: episode.name,
             slug: episode.slug,
             link_m3u8: episode.link_m3u8,

@@ -13,7 +13,7 @@ function internalImage(url: string, imageBase?: string) {
 }
 
 function internalStream(url: string) {
-  if (!url) return url;
+  if (!url || url === "null" || url === "undefined" || url.includes("url=null") || url.includes("url=undefined")) return "";
   return `/api/stream?token=${encryptStreamUrl(url)}`;
 }
 

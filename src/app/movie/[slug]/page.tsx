@@ -120,6 +120,11 @@ export default async function MoviePage({ params, searchParams }: { params: Prom
       <section className="mx-auto grid max-w-7xl gap-5 px-3 pb-20 sm:gap-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0">
           <VideoPlayer src={activeEpisode?.link_m3u8} poster={movie.thumb_url || movie.poster_url} resumeKey={`${movie.slug}:${activeEpisode?.slug ?? activeEpisode?.name ?? "default"}`} introStart={introStart} introEnd={introEnd} />
+          {!activeEpisode && (
+            <p className="mt-3 rounded-md border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
+              This movie has episodes listed, but no playable HLS stream is available yet.
+            </p>
+          )}
         </div>
         <aside className="rounded-lg border border-white/10 bg-white/5 p-3 backdrop-blur-xl sm:p-4">
           <h2 className="mb-4 text-lg font-bold text-white">Episodes</h2>

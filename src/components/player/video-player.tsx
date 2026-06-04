@@ -281,7 +281,7 @@ export function VideoPlayer({
       onMouseMove={showControlsTemporarily}
       onMouseEnter={showControlsTemporarily}
       onTouchStart={showControlsTemporarily}
-      className="pmovies-player group relative aspect-video overflow-hidden rounded-md bg-black shadow-2xl shadow-black/60"
+      className={`pmovies-player group relative aspect-video overflow-hidden rounded-md bg-black shadow-2xl shadow-black/60 ${controlsVisible ? "cursor-auto" : "cursor-none"}`}
     >
       <video ref={videoRef} poster={poster} playsInline className="h-full w-full object-contain" />
       <button type="button" onClick={togglePlay} className="absolute inset-0 z-10" aria-label={locked ? "Request playback change" : "Toggle playback"} />

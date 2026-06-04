@@ -7,9 +7,28 @@ export const preferredRegion = "sin1";
 const ALLOWED_HOSTS = new Set(["phimapi.com"]);
 const ALLOWED_SUFFIXES = [".phimapi.com", ".kkphimplayer.com"];
 const KK_PLAYER_HOST = /^([a-z]\d+\.)?kkphimplayer\d+\.com$/i;
+const RELAY_URL = process.env.STREAM_RELAY_URL;
 
 function isAllowed(url: URL) {
   return ALLOWED_HOSTS.has(url.hostname) || ALLOWED_SUFFIXES.some((suffix) => url.hostname.endsWith(suffix)) || KK_PLAYER_HOST.test(url.hostname);
+}
+
+function streamHeaders(target: URL) {
+  return {
+    Referer: "https://player.phimapi.com/",
+    Origin: "https://player.phimapi.com",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36",
+    Accept: target.pathname.endsWith(".m3u8") ? "application/vnd.apple.mpegurl,*/*" : "*/*",
+  };
+}
+
+async function fetchViaRelay(target: URL) {
+  if (!RELAY_URL) return null;
+  const relay = new URL(RELAY_URL);
+  relay.searchParams.set("url", target.toString());
+  return fetch(relay, {
+    headers: streamHeaders(target),
+  });
 }
 
 export async function GET(request: Request) {
@@ -29,14 +48,10 @@ export async function GET(request: Request) {
   }
   if (!isAllowed(target)) return new Response("Forbidden stream host", { status: 403 });
 
-  const upstream = await fetch(target, {
-    headers: {
-      Referer: "https://player.phimapi.com/",
-      Origin: "https://player.phimapi.com",
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36",
-      Accept: target.pathname.endsWith(".m3u8") ? "application/vnd.apple.mpegurl,*/*" : "*/*",
-    },
-  });
+  let upstream = await fetch(target, { headers: streamHeaders(target) });
+  if ([403, 404].includes(upstream.status)) {
+    upstream = await fetchViaRelay(target) ?? upstream;
+  }
   if (!upstream.ok || !upstream.body) {
     return new Response(`Stream unavailable from ${target.hostname}`, {
       status: upstream.status,

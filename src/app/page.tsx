@@ -97,10 +97,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
         </section>
       )}
       <div className="-mt-8 pb-16">
-        <MovieRow title="Latest Releases" movies={latestMovies} />
-        <MovieRow title="Action & Feature Films" movies={pickMovies(action as MovieListPayload | null)} />
-        <MovieRow title="TV Shows" movies={pickMovies(shows as MovieListPayload | null)} />
-        <MovieRow title="Anime" movies={pickMovies(anime as MovieListPayload | null)} />
+        <MovieRow title="Latest Releases" movies={latestMovies} seeMoreHref="/browse?type=phim-moi-cap-nhat" />
+        <MovieRow title="Action & Feature Films" movies={pickMovies(action as MovieListPayload | null)} seeMoreHref="/browse?type=phim-le" />
+        <MovieRow title="TV Shows" movies={pickMovies(shows as MovieListPayload | null)} seeMoreHref="/browse?type=tv-shows" />
+        <MovieRow title="Anime" movies={pickMovies(anime as MovieListPayload | null)} seeMoreHref="/browse?type=hoat-hinh" />
       </div>
     </MotionShell>
   );

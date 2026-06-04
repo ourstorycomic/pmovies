@@ -1,10 +1,11 @@
 import { decryptStreamToken, encryptStreamUrl } from "@/lib/server/stream-token";
 
 const ALLOWED_HOSTS = new Set(["phimapi.com"]);
-const ALLOWED_SUFFIXES = [".phimapi.com", ".kkphimplayer7.com", ".kkphimplayer.com", ".kkphimplayer8.com", ".kkphimplayer9.com"];
+const ALLOWED_SUFFIXES = [".phimapi.com", ".kkphimplayer.com"];
+const KK_PLAYER_HOST = /^([a-z]\d+\.)?kkphimplayer\d+\.com$/i;
 
 function isAllowed(url: URL) {
-  return ALLOWED_HOSTS.has(url.hostname) || ALLOWED_SUFFIXES.some((suffix) => url.hostname.endsWith(suffix));
+  return ALLOWED_HOSTS.has(url.hostname) || ALLOWED_SUFFIXES.some((suffix) => url.hostname.endsWith(suffix)) || KK_PLAYER_HOST.test(url.hostname);
 }
 
 export async function GET(request: Request) {

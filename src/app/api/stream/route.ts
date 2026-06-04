@@ -1,5 +1,8 @@
 import { decryptStreamToken, encryptStreamUrl } from "@/lib/server/stream-token";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 const ALLOWED_HOSTS = new Set(["phimapi.com"]);
 const ALLOWED_SUFFIXES = [".phimapi.com", ".kkphimplayer.com"];
 const KK_PLAYER_HOST = /^([a-z]\d+\.)?kkphimplayer\d+\.com$/i;
@@ -34,7 +37,14 @@ export async function GET(request: Request) {
     },
   });
   if (!upstream.ok || !upstream.body) {
-    return new Response(`Stream unavailable from ${target.hostname}`, { status: upstream.status });
+    return new Response(`Stream unavailable from ${target.hostname}`, {
+      status: upstream.status,
+      headers: {
+        "X-PMovies-Upstream-Host": target.hostname,
+        "X-PMovies-Upstream-Status": String(upstream.status),
+        "Cache-Control": "no-store",
+      },
+    });
   }
 
   const contentType = upstream.headers.get("content-type") ?? "";

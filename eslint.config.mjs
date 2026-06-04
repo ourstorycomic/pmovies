@@ -11,6 +11,7 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    "aniskip-extension-main/**",
     "next-env.d.ts",
   ]),
 ]);

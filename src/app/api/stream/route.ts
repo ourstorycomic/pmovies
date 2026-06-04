@@ -8,6 +8,7 @@ const ALLOWED_HOSTS = new Set(["phimapi.com"]);
 const ALLOWED_SUFFIXES = [".phimapi.com", ".kkphimplayer.com"];
 const KK_PLAYER_HOST = /^([a-z]\d+\.)?kkphimplayer\d+\.com$/i;
 const RELAY_URL = process.env.STREAM_RELAY_URL;
+const RELAY_SECRET = process.env.STREAM_RELAY_SECRET;
 
 function isAllowed(url: URL) {
   return ALLOWED_HOSTS.has(url.hostname) || ALLOWED_SUFFIXES.some((suffix) => url.hostname.endsWith(suffix)) || KK_PLAYER_HOST.test(url.hostname);
@@ -27,7 +28,10 @@ async function fetchViaRelay(target: URL) {
   const relay = new URL(RELAY_URL);
   relay.searchParams.set("url", target.toString());
   return fetch(relay, {
-    headers: streamHeaders(target),
+    headers: {
+      ...streamHeaders(target),
+      ...(RELAY_SECRET ? { "X-Stream-Relay-Secret": RELAY_SECRET } : {}),
+    },
   });
 }
 

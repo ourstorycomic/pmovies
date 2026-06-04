@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const preferredRegion = "sin1";
 const RELAY_URL = process.env.STREAM_RELAY_URL;
+const RELAY_SECRET = process.env.STREAM_RELAY_SECRET;
 
 function streamHeaders(target: URL) {
   return {
@@ -18,7 +19,12 @@ async function fetchViaRelay(target: URL) {
   if (!RELAY_URL) return null;
   const relay = new URL(RELAY_URL);
   relay.searchParams.set("url", target.toString());
-  return fetch(relay, { headers: streamHeaders(target) });
+  return fetch(relay, {
+    headers: {
+      ...streamHeaders(target),
+      ...(RELAY_SECRET ? { "X-Stream-Relay-Secret": RELAY_SECRET } : {}),
+    },
+  });
 }
 
 function maskPath(pathname: string) {

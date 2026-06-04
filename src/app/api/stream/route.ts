@@ -1,7 +1,7 @@
 import { decryptStreamToken, encryptStreamUrl } from "@/lib/server/stream-token";
 
 const ALLOWED_HOSTS = new Set(["phimapi.com"]);
-const ALLOWED_SUFFIXES = [".phimapi.com", ".kkphimplayer7.com"];
+const ALLOWED_SUFFIXES = [".phimapi.com", ".kkphimplayer7.com", ".kkphimplayer.com", ".kkphimplayer8.com", ".kkphimplayer9.com"];
 
 function isAllowed(url: URL) {
   return ALLOWED_HOSTS.has(url.hostname) || ALLOWED_SUFFIXES.some((suffix) => url.hostname.endsWith(suffix));
@@ -24,8 +24,17 @@ export async function GET(request: Request) {
   }
   if (!isAllowed(target)) return new Response("Forbidden stream host", { status: 403 });
 
-  const upstream = await fetch(target, { headers: { Referer: "https://phimapi.com/" } });
-  if (!upstream.ok || !upstream.body) return new Response("Stream unavailable", { status: upstream.status });
+  const upstream = await fetch(target, {
+    headers: {
+      Referer: "https://player.phimapi.com/",
+      Origin: "https://player.phimapi.com",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36",
+      Accept: target.pathname.endsWith(".m3u8") ? "application/vnd.apple.mpegurl,*/*" : "*/*",
+    },
+  });
+  if (!upstream.ok || !upstream.body) {
+    return new Response(`Stream unavailable from ${target.hostname}`, { status: upstream.status });
+  }
 
   const contentType = upstream.headers.get("content-type") ?? "";
   if (contentType.includes("mpegurl") || target.pathname.endsWith(".m3u8")) {

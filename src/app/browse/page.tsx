@@ -77,7 +77,10 @@ export default async function BrowsePage({
           </form>
         </section>
         <div className="flex flex-wrap gap-4">
-          {movies.map((movie) => <MovieCardView key={movie.slug} movie={movie} />)}
+          {movies.map((movie) => {
+            const href = type === "phim-thuyet-minh" ? `/movie/${movie.slug}?server=thuyet-minh` : `/movie/${movie.slug}`;
+            return <MovieCardView key={movie.slug} movie={movie} href={href} />;
+          })}
         </div>
       </main>
     </MotionShell>

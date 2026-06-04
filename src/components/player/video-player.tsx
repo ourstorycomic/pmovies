@@ -69,12 +69,14 @@ export function VideoPlayer({
   const [localRequest, setLocalRequest] = useState<PlayerRequest | null>(null);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [streamError, setStreamError] = useState("");
   const hideTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !src) return;
     let hls: Hls | null = null;
+    setStreamError("");
 
     if (Hls.isSupported()) {
       hls = new Hls({
@@ -91,6 +93,12 @@ export function VideoPlayer({
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setLevels(hls!.levels.map((item, index) => ({ height: item.height, index })).filter((item) => item.height));
+      });
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal) {
+          setStreamError(data.type === Hls.ErrorTypes.NETWORK_ERROR ? "This stream is blocked or temporarily unavailable." : "This stream could not be decoded.");
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls?.startLoad();
+        }
       });
     } else {
       video.src = src;
@@ -138,16 +146,44 @@ export function VideoPlayer({
     if (!resumeKey) return;
     const video = videoRef.current;
     if (!video) return;
+    const resumeStorageKey = `pmovies_resume:${resumeKey}`;
+    const indexKey = "pmovies_resume_index";
+
+    const touchResumeIndex = () => {
+      const raw = localStorage.getItem(indexKey);
+      const items = raw ? JSON.parse(raw) as string[] : [];
+      const next = [resumeStorageKey, ...items.filter((item) => item !== resumeStorageKey)].slice(0, 3);
+      for (const stale of items.slice(3)) localStorage.removeItem(stale);
+      localStorage.setItem(indexKey, JSON.stringify(next));
+    };
+
+    const clearResume = () => {
+      localStorage.removeItem(resumeStorageKey);
+      const raw = localStorage.getItem(indexKey);
+      const items = raw ? JSON.parse(raw) as string[] : [];
+      localStorage.setItem(indexKey, JSON.stringify(items.filter((item) => item !== resumeStorageKey)));
+    };
+
     const timer = window.setInterval(() => {
+      if (video.duration && video.currentTime > video.duration - 20) {
+        clearResume();
+        return;
+      }
       if (video.currentTime > 5) {
-        localStorage.setItem(`pmovies_resume:${resumeKey}`, JSON.stringify({
+        localStorage.setItem(resumeStorageKey, JSON.stringify({
           time: video.currentTime,
           duration: video.duration || 0,
           updated_at: Date.now(),
         }));
+        touchResumeIndex();
       }
     }, 5000);
-    return () => window.clearInterval(timer);
+
+    video.addEventListener("ended", clearResume);
+    return () => {
+      window.clearInterval(timer);
+      video.removeEventListener("ended", clearResume);
+    };
   }, [resumeKey, videoRef]);
 
   useEffect(() => {
@@ -250,6 +286,13 @@ export function VideoPlayer({
       <video ref={videoRef} poster={poster} playsInline className="h-full w-full object-contain" />
       <button type="button" onClick={togglePlay} className="absolute inset-0 z-10" aria-label={locked ? "Request playback change" : "Toggle playback"} />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/15 opacity-100 transition" />
+      {streamError && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/45 p-4 text-center backdrop-blur-sm">
+          <div className="max-w-md rounded-md border border-rose-400/25 bg-black/75 px-4 py-3 text-sm text-rose-100 shadow-2xl">
+            {streamError}
+          </div>
+        </div>
+      )}
       {resumeTime !== null && !locked && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/30 backdrop-blur-sm">
           <div className="rounded-md border border-white/10 bg-black/80 p-4 text-white shadow-2xl">

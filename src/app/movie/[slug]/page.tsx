@@ -27,10 +27,47 @@ function isPlayableStream(url?: string | null) {
   return Boolean(url && url !== "null" && url !== "undefined" && !url.includes("url=null") && !url.includes("url=undefined"));
 }
 
-function findEpisode(movie: MovieDetail, selected?: string): EpisodeLink | undefined {
-  const episodes = movie.episodes?.flatMap((server) => server.server_data) ?? [];
-  const selectedEpisode = episodes.find((episode) => (episode.slug === selected || episode.name === selected) && isPlayableStream(episode.link_m3u8));
-  return selectedEpisode ?? episodes.find((episode) => isPlayableStream(episode.link_m3u8));
+type PlayableEpisode = EpisodeLink & {
+  serverName: string;
+  serverIndex: number;
+  episodeIndex: number;
+  key: string;
+};
+
+function slugify(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function episodeKey(serverName: string, episode: EpisodeLink, serverIndex: number, episodeIndex: number) {
+  return `${slugify(serverName)}-${episode.slug ?? slugify(episode.name)}-${serverIndex}-${episodeIndex}`;
+}
+
+function playableEpisodes(movie: MovieDetail): PlayableEpisode[] {
+  return movie.episodes?.flatMap((server, serverIndex) =>
+    server.server_data
+      .filter((episode) => isPlayableStream(episode.link_m3u8))
+      .map((episode, episodeIndex) => ({
+        ...episode,
+        serverName: server.server_name,
+        serverIndex,
+        episodeIndex,
+        key: episodeKey(server.server_name, episode, serverIndex, episodeIndex),
+      })),
+  ) ?? [];
+}
+
+function findEpisode(movie: MovieDetail, selected?: string, serverHint?: string): PlayableEpisode | undefined {
+  const episodes = playableEpisodes(movie);
+  const normalizedHint = slugify(serverHint ?? "");
+  const selectedEpisode = episodes.find((episode) => episode.key === selected || episode.slug === selected || episode.name === selected);
+  if (selectedEpisode) return selectedEpisode;
+  const hintedEpisode = normalizedHint ? episodes.find((episode) => slugify(episode.serverName).includes(normalizedHint)) : null;
+  return hintedEpisode ?? episodes[0];
 }
 
 function episodeNumber(episode?: EpisodeLink) {
@@ -39,12 +76,13 @@ function episodeNumber(episode?: EpisodeLink) {
   return match ? Number(match[1]) : 1;
 }
 
-export default async function MoviePage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ episode?: string }> }) {
+export default async function MoviePage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ episode?: string; server?: string }> }) {
   const { slug } = await params;
-  const { episode } = await searchParams;
+  const { episode, server } = await searchParams;
   const movie = await getMovie(slug);
   if (!movie) notFound();
-  const activeEpisode = findEpisode(movie, episode);
+  const episodes = playableEpisodes(movie);
+  const activeEpisode = findEpisode(movie, episode, server);
   const season = Number(movie.tmdb?.season ?? 1);
   const episodeNo = episodeNumber(activeEpisode);
   const supabase = await createSupabaseServerClient();
@@ -86,13 +124,13 @@ export default async function MoviePage({ params, searchParams }: { params: Prom
         <aside className="rounded-lg border border-white/10 bg-white/5 p-3 backdrop-blur-xl sm:p-4">
           <h2 className="mb-4 text-lg font-bold text-white">Episodes</h2>
           <div className="grid max-h-[360px] gap-2 overflow-y-auto pr-1 sm:max-h-[520px]">
-            {movie.episodes?.flatMap((server) =>
-              server.server_data.map((episode) => (
-                <Button key={`${server.server_name}-${episode.name}`} asChild variant={episode.link_m3u8 === activeEpisode?.link_m3u8 ? "default" : "glass"} className="justify-start">
-                  <a href={`/movie/${movie.slug}?episode=${encodeURIComponent(episode.slug ?? episode.name)}`}>{episode.name}</a>
+            {episodes.map((episode) => (
+                <Button key={episode.key} asChild variant={episode.link_m3u8 === activeEpisode?.link_m3u8 ? "default" : "glass"} className="justify-start">
+                  <a href={`/movie/${movie.slug}?episode=${encodeURIComponent(episode.key)}`}>
+                    <span className="truncate">{episode.name} · {episode.serverName.replace(/^#\s*/, "")}</span>
+                  </a>
                 </Button>
-              )),
-            )}
+            ))}
           </div>
         </aside>
       </section>

@@ -2,6 +2,7 @@ import { decryptStreamToken } from "@/lib/server/stream-token";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const preferredRegion = "sin1";
 
 function maskPath(pathname: string) {
   const parts = pathname.split("/").filter(Boolean);

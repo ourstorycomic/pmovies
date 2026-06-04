@@ -2,6 +2,7 @@ import { decryptStreamToken, encryptStreamUrl } from "@/lib/server/stream-token"
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const preferredRegion = "sin1";
 
 const ALLOWED_HOSTS = new Set(["phimapi.com"]);
 const ALLOWED_SUFFIXES = [".phimapi.com", ".kkphimplayer.com"];

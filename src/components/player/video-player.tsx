@@ -41,6 +41,7 @@ export function VideoPlayer({
   externalRef,
   locked = false,
   onRequest,
+  onCancelRequest,
   pendingRequest,
   onRespondRequest,
   resumeKey,
@@ -53,7 +54,8 @@ export function VideoPlayer({
   poster?: string;
   externalRef?: RefObject<HTMLVideoElement | null>;
   locked?: boolean;
-  onRequest?: (request: PlayerRequest) => void;
+  onRequest?: (request: PlayerRequest) => string | void;
+  onCancelRequest?: (requestId?: string) => void;
   pendingRequest?: PlayerPendingRequest | null;
   onRespondRequest?: (accepted: boolean) => void;
   resumeKey?: string;
@@ -76,13 +78,15 @@ export function VideoPlayer({
   const [level, setLevel] = useState(-1);
   const [speed, setSpeed] = useState(1);
   const [resumeTime, setResumeTime] = useState<number | null>(null);
-  const [localRequest, setLocalRequest] = useState<PlayerRequest | null>(null);
+  const [localRequest, setLocalRequest] = useState<(PlayerRequest & { id?: string }) | null>(null);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPictureInPicture, setIsPictureInPicture] = useState(false);
   const [pictureInPictureSupported, setPictureInPictureSupported] = useState(false);
   const [streamError, setStreamError] = useState("");
   const hideTimerRef = useRef<number | null>(null);
+  const lastLockedStateRef = useRef({ time: 0, paused: true });
+  const nativeGuardRef = useRef(false);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -220,17 +224,72 @@ export function VideoPlayer({
     if (requestResolutionKey) queueMicrotask(() => setLocalRequest(null));
   }, [requestResolutionKey]);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !locked) return;
+
+    const isRemoteApplying = () => Boolean((video as HTMLVideoElement & { __pmoviesRemoteApplying?: boolean }).__pmoviesRemoteApplying);
+    const rememberState = () => {
+      if (!nativeGuardRef.current) {
+        lastLockedStateRef.current = { time: video.currentTime || 0, paused: video.paused };
+      }
+    };
+    const restoreHostState = () => {
+      nativeGuardRef.current = true;
+      const last = lastLockedStateRef.current;
+      if (Math.abs(video.currentTime - last.time) > 0.5) video.currentTime = last.time;
+      if (last.paused) {
+        video.pause();
+      } else {
+        void video.play().catch(() => undefined);
+      }
+      window.setTimeout(() => {
+        nativeGuardRef.current = false;
+      }, 250);
+    };
+    const requestNativeChange = (request: PlayerRequest) => {
+      if (nativeGuardRef.current || isRemoteApplying()) {
+        rememberState();
+        return;
+      }
+      const requestId = onRequest?.(request);
+      setLocalRequest({ ...request, id: typeof requestId === "string" ? requestId : undefined });
+      restoreHostState();
+    };
+
+    const onPlay = () => requestNativeChange({ type: "play", time: lastLockedStateRef.current.time });
+    const onPause = () => requestNativeChange({ type: "pause", time: lastLockedStateRef.current.time });
+    const onSeeking = () => requestNativeChange({ type: "seek", time: video.currentTime });
+
+    video.addEventListener("timeupdate", rememberState);
+    video.addEventListener("play", onPlay);
+    video.addEventListener("pause", onPause);
+    video.addEventListener("seeking", onSeeking);
+    return () => {
+      video.removeEventListener("timeupdate", rememberState);
+      video.removeEventListener("play", onPlay);
+      video.removeEventListener("pause", onPause);
+      video.removeEventListener("seeking", onSeeking);
+    };
+  }, [locked, onRequest, videoRef]);
+
   if (!src) {
     return <div className="flex aspect-video items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-300 backdrop-blur-xl">No HLS stream available.</div>;
   }
 
   function requestOrRun(request: PlayerRequest, run: () => void) {
     if (locked) {
-      setLocalRequest(request);
-      onRequest?.(request);
+      const requestId = onRequest?.(request);
+      setLocalRequest({ ...request, id: typeof requestId === "string" ? requestId : undefined });
       return;
     }
     run();
+  }
+
+  function cancelLocalRequest(event?: React.MouseEvent) {
+    event?.stopPropagation();
+    onCancelRequest?.(localRequest?.id);
+    setLocalRequest(null);
   }
 
   function togglePlay() {
@@ -360,8 +419,11 @@ export function VideoPlayer({
       )}
       {locked && localRequest && localRequest.type !== "seek" && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
-          <div className="rounded-md border border-amber-300/25 bg-black/70 px-4 py-3 text-amber-100 shadow-2xl backdrop-blur-xl">
-            Request sent: {localRequest.type}
+          <div className="pointer-events-auto flex items-center gap-3 rounded-md border border-amber-300/25 bg-black/70 px-4 py-3 text-amber-100 shadow-2xl backdrop-blur-xl">
+            <span>Request sent: {localRequest.type}</span>
+            <button onClick={cancelLocalRequest} className="rounded-md bg-white/10 p-1.5 text-white hover:bg-rose-400">
+              <X size={14} />
+            </button>
           </div>
         </div>
       )}
@@ -392,6 +454,11 @@ export function VideoPlayer({
                       <button onClick={(event) => { event.stopPropagation(); onRespondRequest?.(true); }} className="rounded-md bg-emerald-400 p-1.5 text-slate-950"><Check size={14} /></button>
                       <button onClick={(event) => { event.stopPropagation(); onRespondRequest?.(false); }} className="rounded-md bg-rose-400 p-1.5 text-white"><X size={14} /></button>
                     </div>
+                  )}
+                  {!pendingRequest && localRequest?.type === "seek" && (
+                    <button onClick={cancelLocalRequest} className="mt-2 rounded-md bg-white/10 p-1.5 text-white hover:bg-rose-400">
+                      <X size={14} />
+                    </button>
                   )}
                 </div>
               </div>

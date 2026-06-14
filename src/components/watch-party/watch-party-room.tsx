@@ -149,18 +149,24 @@ export function WatchPartyRoom({ room, userId, initialMessages }: { room: Room; 
       })
       .on("broadcast", { event: "player_state" }, ({ payload }) => {
         if (isHost || !videoRef.current) return;
-        const video = videoRef.current;
+        const video = videoRef.current as HTMLVideoElement & { __pmoviesRemoteApplying?: boolean };
         applyingRemoteRef.current = true;
+        video.__pmoviesRemoteApplying = true;
         if (typeof payload.time === "number" && Math.abs(video.currentTime - payload.time) > 0.75) video.currentTime = payload.time;
         if (payload.paused === false) void video.play().catch(() => undefined);
         if (payload.paused === true) video.pause();
         window.setTimeout(() => {
           applyingRemoteRef.current = false;
+          video.__pmoviesRemoteApplying = false;
         }, 400);
       })
       .on("broadcast", { event: "control_request" }, ({ payload }) => {
         if (!isHost) return;
         setPendingRequest(payload as ControlRequest);
+      })
+      .on("broadcast", { event: "control_cancel" }, ({ payload }) => {
+        if (!isHost) return;
+        setPendingRequest((request) => request && request.id === payload.requestId ? null : request);
       })
       .on("broadcast", { event: "control_response" }, ({ payload }) => {
         if (!guest || payload.guestId !== guest.id) return;
@@ -271,7 +277,7 @@ export function WatchPartyRoom({ room, userId, initialMessages }: { room: Room; 
     });
   }
 
-  async function sendControlRequest(type: "seek" | "pause" | "play", time?: number) {
+  function sendControlRequest(type: "seek" | "pause" | "play", time?: number) {
     const identity = guest ?? getGuestIdentity();
     const request: ControlRequest = {
       id: crypto.randomUUID(),
@@ -280,7 +286,13 @@ export function WatchPartyRoom({ room, userId, initialMessages }: { room: Room; 
       type,
       time: type === "seek" ? time : videoRef.current?.currentTime,
     };
-    await channelRef.current?.send({ type: "broadcast", event: "control_request", payload: request });
+    void channelRef.current?.send({ type: "broadcast", event: "control_request", payload: request });
+    return request.id;
+  }
+
+  function cancelControlRequest(requestId?: string) {
+    if (!requestId) return;
+    void channelRef.current?.send({ type: "broadcast", event: "control_cancel", payload: { requestId } });
   }
 
   async function respondToRequest(accepted: boolean) {
@@ -321,6 +333,7 @@ export function WatchPartyRoom({ room, userId, initialMessages }: { room: Room; 
             externalRef={videoRef}
             locked={!isHost}
             onRequest={(request) => sendControlRequest(request.type, request.time)}
+            onCancelRequest={cancelControlRequest}
             pendingRequest={isHost ? pendingRequest as PlayerPendingRequest | null : null}
             onRespondRequest={respondToRequest}
             resumeKey={`party:${room.id}`}

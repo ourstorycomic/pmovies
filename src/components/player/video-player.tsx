@@ -1,7 +1,7 @@
 "use client";
 
 import Hls from "hls.js";
-import { Check, Maximize, Minimize, Pause, Play, Volume2, VolumeX, X } from "lucide-react";
+import { Check, Maximize, Minimize, Pause, PictureInPicture2, Play, Volume2, VolumeX, X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 
 type PlayerRequest = {
@@ -16,6 +16,16 @@ export type PlayerPendingRequest = PlayerRequest & {
 
 type LockableOrientation = ScreenOrientation & {
   lock?: (orientation: "landscape") => Promise<void>;
+};
+
+type PictureInPictureDocument = Document & {
+  pictureInPictureElement?: Element | null;
+  pictureInPictureEnabled?: boolean;
+  exitPictureInPicture?: () => Promise<void>;
+};
+
+type PictureInPictureVideo = HTMLVideoElement & {
+  requestPictureInPicture?: () => Promise<PictureInPictureWindow>;
 };
 
 function formatTime(seconds: number) {
@@ -69,6 +79,8 @@ export function VideoPlayer({
   const [localRequest, setLocalRequest] = useState<PlayerRequest | null>(null);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isPictureInPicture, setIsPictureInPicture] = useState(false);
+  const [pictureInPictureSupported, setPictureInPictureSupported] = useState(false);
   const [streamError, setStreamError] = useState("");
   const hideTimerRef = useRef<number | null>(null);
 
@@ -119,6 +131,11 @@ export function VideoPlayer({
     video.addEventListener("pause", sync);
     video.addEventListener("volumechange", sync);
     video.addEventListener("durationchange", sync);
+    const onEnterPictureInPicture = () => setIsPictureInPicture(true);
+    const onLeavePictureInPicture = () => setIsPictureInPicture(false);
+
+    video.addEventListener("enterpictureinpicture", onEnterPictureInPicture);
+    video.addEventListener("leavepictureinpicture", onLeavePictureInPicture);
 
     return () => {
       video.removeEventListener("loadedmetadata", sync);
@@ -127,10 +144,17 @@ export function VideoPlayer({
       video.removeEventListener("pause", sync);
       video.removeEventListener("volumechange", sync);
       video.removeEventListener("durationchange", sync);
+      video.removeEventListener("enterpictureinpicture", onEnterPictureInPicture);
+      video.removeEventListener("leavepictureinpicture", onLeavePictureInPicture);
       hls?.destroy();
       hlsRef.current = null;
     };
   }, [src, videoRef]);
+
+  useEffect(() => {
+    const pipDocument = document as PictureInPictureDocument;
+    queueMicrotask(() => setPictureInPictureSupported(Boolean(pipDocument.pictureInPictureEnabled)));
+  }, []);
 
   useEffect(() => {
     if (!resumeKey) return;
@@ -264,6 +288,23 @@ export function VideoPlayer({
     }
   }
 
+  async function togglePictureInPicture() {
+    const video = videoRef.current as PictureInPictureVideo | null;
+    const pipDocument = document as PictureInPictureDocument;
+    if (!video || !pipDocument.pictureInPictureEnabled) return;
+
+    try {
+      if (pipDocument.pictureInPictureElement) {
+        await pipDocument.exitPictureInPicture?.();
+        return;
+      }
+      if (document.fullscreenElement) await document.exitFullscreen();
+      await video.requestPictureInPicture?.();
+    } catch {
+      setIsPictureInPicture(Boolean(pipDocument.pictureInPictureElement));
+    }
+  }
+
   function showControlsTemporarily() {
     setControlsVisible(true);
     if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
@@ -375,6 +416,11 @@ export function VideoPlayer({
             <option value={-1}>Auto</option>
             {levels.map((item) => <option key={item.index} value={item.index}>{item.height}p</option>)}
           </select>
+          {pictureInPictureSupported && (
+            <button type="button" onClick={togglePictureInPicture} className="shrink-0 rounded-md bg-white/10 p-2 hover:bg-white/20" title={isPictureInPicture ? "Close mini player" : "Mini player"}>
+              <PictureInPicture2 size={18} className={isPictureInPicture ? "text-cyan-200" : undefined} />
+            </button>
+          )}
           <button type="button" onClick={toggleFullscreen} className="ml-auto shrink-0 rounded-md bg-white/10 p-2 hover:bg-white/20">
             {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
           </button>

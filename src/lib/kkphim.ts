@@ -14,8 +14,7 @@ function internalImage(url: string, imageBase?: string) {
 
 function internalStream(url: string) {
   if (!url || url === "null" || url === "undefined" || url.includes("url=null") || url.includes("url=undefined")) return "";
-  // Bypass stream proxy: kkphimplayer blocks Vercel IPs but allows direct client-side fetching with CORS
-  return url;
+  return `/api/stream?token=${encryptStreamUrl(url)}`;
 }
 
 function cleanString(value: string) {

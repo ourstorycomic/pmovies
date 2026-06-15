@@ -1,7 +1,7 @@
 "use client";
 
 import Hls from "hls.js";
-import { Check, Maximize, Minimize, Pause, PictureInPicture2, Play, Volume2, VolumeX, X } from "lucide-react";
+import { Check, Loader2, Maximize, Minimize, Pause, PictureInPicture2, Play, Volume2, VolumeX, X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 
 type PlayerRequest = {
@@ -84,6 +84,7 @@ export function VideoPlayer({
   const documentPipWindowRef = useRef<Window | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const [ready, setReady] = useState(false);
+  const [buffering, setBuffering] = useState(false);
   const [paused, setPaused] = useState(true);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -143,13 +144,18 @@ export function VideoPlayer({
       setMuted(video.muted);
       setReady(true);
     };
+    const onWaiting = () => setBuffering(true);
+    const onPlaying = () => { setBuffering(false); sync(); };
 
     video.addEventListener("loadedmetadata", sync);
     video.addEventListener("timeupdate", sync);
-    video.addEventListener("play", sync);
+    video.addEventListener("play", onPlaying);
     video.addEventListener("pause", sync);
     video.addEventListener("volumechange", sync);
     video.addEventListener("durationchange", sync);
+    video.addEventListener("waiting", onWaiting);
+    video.addEventListener("playing", onPlaying);
+    video.addEventListener("canplay", onPlaying);
     const onEnterPictureInPicture = () => setIsPictureInPicture(true);
     const onLeavePictureInPicture = () => setIsPictureInPicture(false);
 
@@ -159,10 +165,13 @@ export function VideoPlayer({
     return () => {
       video.removeEventListener("loadedmetadata", sync);
       video.removeEventListener("timeupdate", sync);
-      video.removeEventListener("play", sync);
+      video.removeEventListener("play", onPlaying);
       video.removeEventListener("pause", sync);
       video.removeEventListener("volumechange", sync);
       video.removeEventListener("durationchange", sync);
+      video.removeEventListener("waiting", onWaiting);
+      video.removeEventListener("playing", onPlaying);
+      video.removeEventListener("canplay", onPlaying);
       video.removeEventListener("enterpictureinpicture", onEnterPictureInPicture);
       video.removeEventListener("leavepictureinpicture", onLeavePictureInPicture);
       hls?.destroy();
@@ -427,10 +436,13 @@ export function VideoPlayer({
         .time { min-width: 78px; font-size: 13px; font-weight: 700; }
         .request-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; align-items: center; gap: 10px; border: 1px solid rgba(252,211,77,.28); background: rgba(0,0,0,.72); color: #fef3c7; border-radius: 10px; padding: 10px 12px; box-shadow: 0 18px 40px rgba(0,0,0,.4); backdrop-filter: blur(16px); }
         .cancel { background: rgba(244,63,94,.78); }
+        .loader { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; color: #67e8f9; animation: spin 1s linear infinite; pointer-events: none; }
+        @keyframes spin { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
       </style>
       <div class="shell">
         <div class="video-slot"></div>
         <div class="shade"></div>
+        <div class="loader"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></div>
         <div class="request-card"><span class="request-text"></span><button class="cancel">×</button></div>
         <div class="controls">
           <div class="timeline"><div class="track"><div class="progress"></div><div class="marker"><div class="bubble"></div></div></div></div>
@@ -458,7 +470,12 @@ export function VideoPlayer({
       idleTimer = pipWindow.setTimeout(() => shell.classList.add("idle"), 2600);
     };
     shell.addEventListener("mousemove", showControls);
-    shell.addEventListener("click", showControls);
+    shell.addEventListener("click", (e) => {
+      showControls();
+      if (e.target === shell || e.target === slot || e.target === video) {
+        togglePlay();
+      }
+    });
     showControls();
 
     (pipWindow.document.querySelector(".play") as HTMLButtonElement).onclick = () => togglePlay();
@@ -493,7 +510,9 @@ export function VideoPlayer({
     const muteButton = pipWindow.document.querySelector(".mute") as HTMLButtonElement | null;
     const timeEl = pipWindow.document.querySelector(".time") as HTMLElement | null;
     const quality = pipWindow.document.querySelector(".quality") as HTMLSelectElement | null;
+    const loader = pipWindow.document.querySelector(".loader") as HTMLElement | null;
 
+    if (loader) loader.style.display = (!ready || buffering) && !streamError ? "block" : "none";
     if (progressEl) progressEl.style.width = `${progressValue}%`;
     if (playButton) playButton.textContent = paused ? "▶" : "Ⅱ";
     if (muteButton) muteButton.textContent = muted || volume === 0 ? "🔇" : "🔊";
@@ -539,6 +558,11 @@ export function VideoPlayer({
       <video ref={videoRef} poster={poster} playsInline className="h-full w-full object-contain" />
       <button type="button" onClick={togglePlay} className="absolute inset-0 z-10" aria-label={locked ? "Request playback change" : "Toggle playback"} />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/15 opacity-100 transition" />
+      {(!ready || buffering) && !streamError && (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center text-cyan-300 drop-shadow-[0_0_12px_rgba(103,232,249,0.8)]">
+          <Loader2 className="h-12 w-12 animate-spin" />
+        </div>
+      )}
       {streamError && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/45 p-4 text-center backdrop-blur-sm">
           <div className="max-w-md rounded-md border border-rose-400/25 bg-black/75 px-4 py-3 text-sm text-rose-100 shadow-2xl">
@@ -645,7 +669,6 @@ export function VideoPlayer({
             {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
           </button>
         </div>
-        {!ready && <p className="text-xs text-slate-300">Loading stream...</p>}
       </div>
     </div>
   );

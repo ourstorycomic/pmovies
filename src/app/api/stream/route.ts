@@ -57,6 +57,9 @@ export async function GET(request: Request) {
     upstream = await fetchViaRelay(target) ?? upstream;
   }
   if (!upstream.ok || !upstream.body) {
+    if ([403, 404].includes(upstream.status)) {
+      return Response.redirect(target.toString(), 302);
+    }
     return new Response(`Stream unavailable from ${target.hostname}`, {
       status: upstream.status,
       headers: {

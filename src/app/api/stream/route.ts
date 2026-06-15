@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const preferredRegion = "sin1";
 
 const ALLOWED_HOSTS = new Set(["phimapi.com"]);
-const ALLOWED_SUFFIXES = [".phimapi.com", ".kkphimplayer.com"];
+const ALLOWED_SUFFIXES = [".phimapi.com", ".kkphimplayer.com", ".phim1280.tv"];
 const KK_PLAYER_HOST = /^([a-z]\d+\.)?kkphimplayer\d+\.com$/i;
 const RELAY_URL = process.env.STREAM_RELAY_URL;
 const RELAY_SECRET = process.env.STREAM_RELAY_SECRET;

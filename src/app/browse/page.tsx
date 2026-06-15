@@ -1,10 +1,16 @@
 import { MotionShell } from "@/components/motion-shell";
+import { Pagination } from "@/components/ui/pagination";
 import { MovieCardView } from "@/components/movies/movie-card";
 import { fetchKkJson } from "@/lib/kkphim";
 import type { MovieCard } from "@/types/movie";
 
 type Option = { name: string; slug: string };
-type BrowsePayload = { data?: { items?: MovieCard[] }; items?: MovieCard[] };
+type PaginationInfo = { totalItems: number; totalItemsPerPage: number; currentPage: number; totalPages: number };
+type BrowsePayload = {
+  data?: { items?: MovieCard[]; params?: { pagination?: PaginationInfo } };
+  items?: MovieCard[];
+  pagination?: PaginationInfo;
+};
 
 const typeLists = [
   ["phim-moi-cap-nhat", "Latest"],
@@ -18,6 +24,10 @@ const typeLists = [
 
 function pickItems(payload: BrowsePayload | null) {
   return payload?.items ?? payload?.data?.items ?? [];
+}
+
+function pickPagination(payload: BrowsePayload | null) {
+  return payload?.pagination ?? payload?.data?.params?.pagination ?? null;
 }
 
 export default async function BrowsePage({
@@ -47,6 +57,9 @@ export default async function BrowsePage({
   ]);
 
   const movies = pickItems(moviesPayload);
+  const pagination = pickPagination(moviesPayload);
+  const currentPage = pagination?.currentPage || parseInt(params.page || "1", 10) || 1;
+  const totalPages = pagination?.totalPages || 1;
   const categories = Array.isArray(categoriesPayload) ? categoriesPayload : categoriesPayload?.data ?? [];
   const countries = Array.isArray(countriesPayload) ? countriesPayload : countriesPayload?.data ?? [];
 
@@ -85,6 +98,19 @@ export default async function BrowsePage({
             return <MovieCardView key={movie.slug} movie={movie} href={href} />;
           })}
         </div>
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          buildUrl={(page) => {
+            const q = new URLSearchParams();
+            if (type !== "phim-le") q.set("type", type);
+            for (const key of ["category", "country", "year", "sort_lang"] as const) {
+              if (params[key]) q.set(key, params[key]!);
+            }
+            q.set("page", page.toString());
+            return `/browse?${q.toString()}`;
+          }}
+        />
       </main>
     </MotionShell>
   );

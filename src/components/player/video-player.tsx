@@ -28,6 +28,19 @@ type PictureInPictureVideo = HTMLVideoElement & {
   requestPictureInPicture?: () => Promise<PictureInPictureWindow>;
 };
 
+type DocumentPictureInPictureController = {
+  requestWindow: (options?: { width?: number; height?: number }) => Promise<Window>;
+};
+
+type WindowWithDocumentPictureInPicture = Window & {
+  documentPictureInPicture?: DocumentPictureInPictureController;
+};
+
+type WatchPartyVideo = HTMLVideoElement & {
+  __pmoviesRemoteApplying?: boolean;
+  __pmoviesHostState?: { time: number; paused: boolean };
+};
+
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds)) return "0:00";
   const mins = Math.floor(seconds / 60);
@@ -67,6 +80,8 @@ export function VideoPlayer({
   const ownRef = useRef<HTMLVideoElement | null>(null);
   const videoRef = externalRef ?? ownRef;
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const videoSlotRef = useRef<HTMLDivElement | null>(null);
+  const documentPipWindowRef = useRef<Window | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const [ready, setReady] = useState(false);
   const [paused, setPaused] = useState(true);
@@ -157,7 +172,8 @@ export function VideoPlayer({
 
   useEffect(() => {
     const pipDocument = document as PictureInPictureDocument;
-    queueMicrotask(() => setPictureInPictureSupported(Boolean(pipDocument.pictureInPictureEnabled)));
+    const docPip = window as WindowWithDocumentPictureInPicture;
+    queueMicrotask(() => setPictureInPictureSupported(Boolean(pipDocument.pictureInPictureEnabled || docPip.documentPictureInPicture)));
   }, []);
 
   useEffect(() => {
@@ -225,18 +241,24 @@ export function VideoPlayer({
   }, [requestResolutionKey]);
 
   useEffect(() => {
+    updateDocumentPictureInPictureUi();
+  });
+
+  useEffect(() => {
     const video = videoRef.current;
     if (!video || !locked) return;
 
-    const isRemoteApplying = () => Boolean((video as HTMLVideoElement & { __pmoviesRemoteApplying?: boolean }).__pmoviesRemoteApplying);
+    const lockedVideo = video as WatchPartyVideo;
+    const isRemoteApplying = () => Boolean(lockedVideo.__pmoviesRemoteApplying);
+    const hostState = () => lockedVideo.__pmoviesHostState ?? lastLockedStateRef.current;
     const rememberState = () => {
       if (!nativeGuardRef.current) {
-        lastLockedStateRef.current = { time: video.currentTime || 0, paused: video.paused };
+        lastLockedStateRef.current = hostState();
       }
     };
     const restoreHostState = () => {
       nativeGuardRef.current = true;
-      const last = lastLockedStateRef.current;
+      const last = hostState();
       if (Math.abs(video.currentTime - last.time) > 0.5) video.currentTime = last.time;
       if (last.paused) {
         video.pause();
@@ -257,8 +279,8 @@ export function VideoPlayer({
       restoreHostState();
     };
 
-    const onPlay = () => requestNativeChange({ type: "play", time: lastLockedStateRef.current.time });
-    const onPause = () => requestNativeChange({ type: "pause", time: lastLockedStateRef.current.time });
+    const onPlay = () => requestNativeChange({ type: "play", time: hostState().time });
+    const onPause = () => requestNativeChange({ type: "pause", time: hostState().time });
     const onSeeking = () => requestNativeChange({ type: "seek", time: video.currentTime });
 
     video.addEventListener("timeupdate", rememberState);
@@ -290,6 +312,10 @@ export function VideoPlayer({
     event?.stopPropagation();
     onCancelRequest?.(localRequest?.id);
     setLocalRequest(null);
+  }
+
+  function visibleRequest() {
+    return pendingRequest ?? (localRequest?.type === "seek" ? { ...localRequest, id: localRequest.id ?? "local", guestName: "You" } : null);
   }
 
   function togglePlay() {
@@ -350,17 +376,144 @@ export function VideoPlayer({
   async function togglePictureInPicture() {
     const video = videoRef.current as PictureInPictureVideo | null;
     const pipDocument = document as PictureInPictureDocument;
-    if (!video || !pipDocument.pictureInPictureEnabled) return;
+    if (!video) return;
 
     try {
+      if (documentPipWindowRef.current) {
+        documentPipWindowRef.current.close();
+        return;
+      }
+      const openedDocumentPip = await openDocumentPictureInPicture(video);
+      if (openedDocumentPip) return;
       if (pipDocument.pictureInPictureElement) {
         await pipDocument.exitPictureInPicture?.();
         return;
       }
+      if (!pipDocument.pictureInPictureEnabled) return;
       if (document.fullscreenElement) await document.exitFullscreen();
       await video.requestPictureInPicture?.();
     } catch {
       setIsPictureInPicture(Boolean(pipDocument.pictureInPictureElement));
+    }
+  }
+
+  async function openDocumentPictureInPicture(video: HTMLVideoElement) {
+    const api = (window as WindowWithDocumentPictureInPicture).documentPictureInPicture;
+    if (!api) return false;
+    if (document.fullscreenElement) await document.exitFullscreen();
+
+    const pipWindow = await api.requestWindow({ width: 760, height: 430 });
+    documentPipWindowRef.current = pipWindow;
+    setIsPictureInPicture(true);
+
+    pipWindow.document.body.innerHTML = `
+      <style>
+        html, body { margin: 0; height: 100%; overflow: hidden; background: #030712; font-family: ui-sans-serif, system-ui, sans-serif; color: white; }
+        .shell { position: relative; height: 100vh; width: 100vw; background: black; }
+        .video-slot, video { height: 100%; width: 100%; }
+        video { object-fit: contain; background: black; }
+        .shade { pointer-events: none; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,.85), transparent 42%, rgba(0,0,0,.25)); }
+        .controls { position: absolute; inset-inline: 0; bottom: 0; padding: 12px; display: grid; gap: 10px; transition: opacity .25s, transform .25s; }
+        .shell.idle { cursor: none; }
+        .shell.idle .controls, .shell.idle .request-card { opacity: 0; transform: translateY(10px); pointer-events: none; }
+        .timeline { height: 20px; cursor: pointer; display: flex; align-items: center; }
+        .track { position: relative; height: 5px; flex: 1; border-radius: 999px; background: rgba(255,255,255,.22); }
+        .progress { height: 100%; width: 0%; border-radius: inherit; background: #67e8f9; box-shadow: 0 0 18px rgba(103,232,249,.65); }
+        .marker { display: none; position: absolute; top: 50%; height: 17px; width: 4px; transform: translateY(-50%); border-radius: 999px; background: #fcd34d; box-shadow: 0 0 16px rgba(252,211,77,.85); }
+        .bubble { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); white-space: nowrap; border: 1px solid rgba(252,211,77,.28); background: rgba(0,0,0,.78); border-radius: 8px; padding: 7px 9px; font-size: 12px; color: #fef3c7; backdrop-filter: blur(14px); }
+        .row { display: flex; align-items: center; gap: 10px; }
+        button { border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.1); color: white; border-radius: 8px; height: 34px; min-width: 34px; font-weight: 800; cursor: pointer; }
+        select { height: 34px; border-radius: 8px; border: 1px solid rgba(255,255,255,.1); background: rgba(0,0,0,.62); color: white; }
+        .time { min-width: 78px; font-size: 13px; font-weight: 700; }
+        .request-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; align-items: center; gap: 10px; border: 1px solid rgba(252,211,77,.28); background: rgba(0,0,0,.72); color: #fef3c7; border-radius: 10px; padding: 10px 12px; box-shadow: 0 18px 40px rgba(0,0,0,.4); backdrop-filter: blur(16px); }
+        .cancel { background: rgba(244,63,94,.78); }
+      </style>
+      <div class="shell">
+        <div class="video-slot"></div>
+        <div class="shade"></div>
+        <div class="request-card"><span class="request-text"></span><button class="cancel">×</button></div>
+        <div class="controls">
+          <div class="timeline"><div class="track"><div class="progress"></div><div class="marker"><div class="bubble"></div></div></div></div>
+          <div class="row"><button class="play">▶</button><span class="time">0:00</span><button class="mute">🔊</button><select class="quality"><option value="-1">Auto</option></select><button class="close">×</button></div>
+        </div>
+      </div>
+    `;
+
+    const shell = pipWindow.document.querySelector(".shell") as HTMLElement;
+    const slot = pipWindow.document.querySelector(".video-slot");
+    slot?.append(video);
+    video.className = "";
+
+    const onClose = () => {
+      videoSlotRef.current?.append(video);
+      video.className = "h-full w-full object-contain";
+      documentPipWindowRef.current = null;
+      setIsPictureInPicture(false);
+    };
+
+    let idleTimer: number | null = null;
+    const showControls = () => {
+      shell.classList.remove("idle");
+      if (idleTimer) pipWindow.clearTimeout(idleTimer);
+      idleTimer = pipWindow.setTimeout(() => shell.classList.add("idle"), 2600);
+    };
+    shell.addEventListener("mousemove", showControls);
+    shell.addEventListener("click", showControls);
+    showControls();
+
+    (pipWindow.document.querySelector(".play") as HTMLButtonElement).onclick = () => togglePlay();
+    (pipWindow.document.querySelector(".mute") as HTMLButtonElement).onclick = () => { video.muted = !video.muted; };
+    (pipWindow.document.querySelector(".close") as HTMLButtonElement).onclick = () => pipWindow.close();
+    (pipWindow.document.querySelector(".cancel") as HTMLButtonElement).onclick = () => cancelLocalRequest();
+    (pipWindow.document.querySelector(".timeline") as HTMLElement).onclick = (event) => {
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      seekTo(((event.clientX - rect.left) / rect.width) * (video.duration || 0));
+    };
+    const quality = pipWindow.document.querySelector(".quality") as HTMLSelectElement;
+    quality.onchange = () => changeLevel(Number(quality.value));
+
+    pipWindow.addEventListener("pagehide", onClose, { once: true });
+    updateDocumentPictureInPictureUi();
+    return true;
+  }
+
+  function updateDocumentPictureInPictureUi() {
+    const pipWindow = documentPipWindowRef.current;
+    if (!pipWindow) return;
+    const progressValue = duration ? (currentTime / duration) * 100 : 0;
+    const request = visibleRequest();
+    const requestPercent = request?.type === "seek" && duration ? ((request.time ?? 0) / duration) * 100 : null;
+
+    const progressEl = pipWindow.document.querySelector(".progress") as HTMLElement | null;
+    const markerEl = pipWindow.document.querySelector(".marker") as HTMLElement | null;
+    const bubbleEl = pipWindow.document.querySelector(".bubble") as HTMLElement | null;
+    const requestCard = pipWindow.document.querySelector(".request-card") as HTMLElement | null;
+    const requestText = pipWindow.document.querySelector(".request-text") as HTMLElement | null;
+    const playButton = pipWindow.document.querySelector(".play") as HTMLButtonElement | null;
+    const muteButton = pipWindow.document.querySelector(".mute") as HTMLButtonElement | null;
+    const timeEl = pipWindow.document.querySelector(".time") as HTMLElement | null;
+    const quality = pipWindow.document.querySelector(".quality") as HTMLSelectElement | null;
+
+    if (progressEl) progressEl.style.width = `${progressValue}%`;
+    if (playButton) playButton.textContent = paused ? "▶" : "Ⅱ";
+    if (muteButton) muteButton.textContent = muted || volume === 0 ? "🔇" : "🔊";
+    if (timeEl) timeEl.textContent = `${formatTime(currentTime)} / ${formatTime(duration)}`;
+    if (quality && quality.options.length !== levels.length + 1) {
+      quality.innerHTML = `<option value="-1">Auto</option>${levels.map((item) => `<option value="${item.index}">${item.height}p</option>`).join("")}`;
+      quality.value = String(level);
+    }
+
+    if (markerEl && bubbleEl) {
+      markerEl.style.display = requestPercent === null ? "none" : "block";
+      if (requestPercent !== null) {
+        markerEl.style.left = `${requestPercent}%`;
+        bubbleEl.textContent = `${request?.guestName ?? "You"} requests ${formatTime(request?.time ?? 0)}`;
+      }
+    }
+    if (requestCard && requestText) {
+      const showCard = Boolean(locked && localRequest && localRequest.type !== "seek");
+      requestCard.style.display = showCard ? "flex" : "none";
+      requestText.textContent = showCard ? `You requested ${localRequest?.type}` : "";
     }
   }
 
@@ -371,8 +524,8 @@ export function VideoPlayer({
   }
 
   const progress = duration ? (currentTime / duration) * 100 : 0;
-  const visibleRequest = pendingRequest ?? (localRequest?.type === "seek" ? { ...localRequest, id: "local", guestName: "Request sent" } : null);
-  const requestProgress = visibleRequest?.type === "seek" && duration ? ((visibleRequest.time ?? 0) / duration) * 100 : null;
+  const shownRequest = visibleRequest();
+  const requestProgress = shownRequest?.type === "seek" && duration ? ((shownRequest.time ?? 0) / duration) * 100 : null;
   const showSkipIntro = introEnd > introStart && currentTime >= Math.max(0, introStart - 1) && currentTime < introEnd - 4;
 
   return (
@@ -448,7 +601,7 @@ export function VideoPlayer({
             {requestProgress !== null && (
               <div className="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-amber-300 shadow-[0_0_16px_rgba(252,211,77,.85)]" style={{ left: `${requestProgress}%` }}>
                 <div className="absolute bottom-5 left-1/2 w-44 -translate-x-1/2 rounded-md border border-amber-300/25 bg-black/75 p-2 text-xs text-amber-50 shadow-xl backdrop-blur-xl sm:w-52">
-                  <p className="font-bold">{visibleRequest?.guestName} {pendingRequest ? "requests" : ""} {formatTime(visibleRequest?.time ?? 0)}</p>
+                  <p className="font-bold">{shownRequest?.guestName} {pendingRequest ? "requests" : "requested"} {formatTime(shownRequest?.time ?? 0)}</p>
                   {pendingRequest && (
                     <div className="mt-2 flex gap-2">
                       <button onClick={(event) => { event.stopPropagation(); onRespondRequest?.(true); }} className="rounded-md bg-emerald-400 p-1.5 text-slate-950"><Check size={14} /></button>

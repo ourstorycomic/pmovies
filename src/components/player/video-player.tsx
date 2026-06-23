@@ -1,7 +1,7 @@
 "use client";
 
 import Hls from "hls.js";
-import { Check, Loader2, Maximize, Minimize, Pause, PictureInPicture2, Play, Volume2, VolumeX, X } from "lucide-react";
+import { Check, Flag, Loader2, Maximize, Minimize, Pause, PictureInPicture2, Play, Settings2, Volume2, VolumeX, X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 
 type PlayerRequest = {
@@ -83,6 +83,9 @@ export function VideoPlayer({
   const videoSlotRef = useRef<HTMLDivElement | null>(null);
   const documentPipWindowRef = useRef<Window | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const thumbVideoRef = useRef<HTMLVideoElement | null>(null);
+  const thumbHlsRef = useRef<Hls | null>(null);
+  const hoverSeekTimerRef = useRef<number | null>(null);
   const [ready, setReady] = useState(false);
   const [buffering, setBuffering] = useState(false);
   const [paused, setPaused] = useState(true);
@@ -100,6 +103,11 @@ export function VideoPlayer({
   const [isPictureInPicture, setIsPictureInPicture] = useState(false);
   const [pictureInPictureSupported, setPictureInPictureSupported] = useState(false);
   const [streamError, setStreamError] = useState("");
+  const [hoverTime, setHoverTime] = useState<number | null>(null);
+  const [hoverPosition, setHoverPosition] = useState<number>(0);
+  
+  const [isAutoSkipEnabled, setIsAutoSkipEnabled] = useState(false);
+
   const hideTimerRef = useRef<number | null>(null);
   const lastLockedStateRef = useRef({ time: 0, paused: true });
   const nativeGuardRef = useRef(false);
@@ -113,12 +121,11 @@ export function VideoPlayer({
     if (Hls.isSupported()) {
       hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: true,
-        startLevel: 0,
+        startLevel: -1,
         capLevelToPlayerSize: true,
-        maxBufferLength: 20,
-        maxMaxBufferLength: 40,
-        backBufferLength: 15,
+        maxBufferLength: 40,
+        maxMaxBufferLength: 80,
+        backBufferLength: 30,
       });
       hlsRef.current = hls;
       hls.loadSource(src);
@@ -128,8 +135,24 @@ export function VideoPlayer({
       });
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
-          setStreamError(data.type === Hls.ErrorTypes.NETWORK_ERROR ? "This stream is blocked or temporarily unavailable." : "This stream could not be decoded.");
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls?.startLoad();
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              console.warn("HLS Network Error, attempting to recover...");
+              hls?.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              console.warn("HLS Media Error, attempting to recover...");
+              hls?.recoverMediaError();
+              break;
+            default:
+              setStreamError("This stream could not be decoded.");
+              hls?.destroy();
+              break;
+          }
+        } else if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
+           // Nudge the player if it stalls for too long
+           console.warn("HLS Buffer Stalled, nudging...");
+           hls?.recoverMediaError();
         }
       });
     } else {
@@ -349,6 +372,14 @@ export function VideoPlayer({
     seekTo(((event.clientX - rect.left) / rect.width) * (duration || 0));
   }
 
+  function handleTimelineHover(event: React.MouseEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
+    const percent = x / rect.width;
+    setHoverPosition(percent * 100);
+    setHoverTime(percent * (duration || 0));
+  }
+
   function changeVolume(next: number) {
     const video = videoRef.current;
     if (!video) return;
@@ -542,10 +573,47 @@ export function VideoPlayer({
     hideTimerRef.current = window.setTimeout(() => setControlsVisible(false), 2600);
   }
 
+  const handleKeyDownRef = useRef({ togglePlay, showControlsTemporarily });
+  handleKeyDownRef.current = { togglePlay, showControlsTemporarily };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        document.activeElement?.tagName === "INPUT" ||
+        document.activeElement?.tagName === "TEXTAREA" ||
+        document.activeElement?.tagName === "SELECT" ||
+        (document.activeElement as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+      if (e.code === "Space") {
+        if (document.activeElement?.tagName === "BUTTON") {
+          (document.activeElement as HTMLElement).blur();
+        }
+        e.preventDefault();
+        handleKeyDownRef.current.togglePlay();
+        handleKeyDownRef.current.showControlsTemporarily();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const progress = duration ? (currentTime / duration) * 100 : 0;
   const shownRequest = visibleRequest();
   const requestProgress = shownRequest?.type === "seek" && duration ? ((shownRequest.time ?? 0) / duration) * 100 : null;
   const showSkipIntro = introEnd > introStart && currentTime >= Math.max(0, introStart - 1) && currentTime < introEnd - 4;
+  
+  const currentAd = (currentTime >= 900 && currentTime < 930) ? { start: 900, end: 930 } : undefined;
+
+  useEffect(() => {
+    if (!isAutoSkipEnabled || !currentAd || locked) return;
+    // Auto seek only if we are still inside the ad
+    const video = videoRef.current;
+    if (video && video.currentTime >= currentAd.start && video.currentTime < currentAd.end) {
+      seekTo(currentAd.end + 0.5);
+    }
+  }, [currentAd, isAutoSkipEnabled, locked]);
 
   return (
     <div
@@ -604,23 +672,49 @@ export function VideoPlayer({
           </div>
         </div>
       )}
-      {showSkipIntro && (
-        <button
-          type="button"
-          onClick={() => seekTo(introEnd)}
-          className="absolute bottom-20 right-3 z-30 rounded-md border border-cyan-300/30 bg-black/70 px-3 py-2 text-xs font-bold text-cyan-100 shadow-xl backdrop-blur-xl hover:bg-cyan-300 hover:text-slate-950 sm:bottom-24 sm:right-4 sm:px-4 sm:text-sm"
-        >
-          Skip intro
-        </button>
-      )}
+      <div className="absolute bottom-20 right-3 z-30 flex flex-col gap-2 sm:bottom-24 sm:right-4">
+        {showSkipIntro && (
+          <button
+            type="button"
+            onClick={() => seekTo(introEnd)}
+            className="rounded-md border border-cyan-300/30 bg-black/70 px-3 py-2 text-xs font-bold text-cyan-100 shadow-xl backdrop-blur-xl hover:bg-cyan-300 hover:text-slate-950 sm:px-4 sm:text-sm"
+          >
+            Skip intro
+          </button>
+        )}
+        {currentAd && (
+          <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-5">
+            <button
+              type="button"
+              onClick={() => seekTo(currentAd.end + 0.5)}
+              className="rounded-md border border-amber-300/30 bg-black/70 px-3 py-2 text-xs font-bold text-amber-100 shadow-xl backdrop-blur-xl hover:bg-amber-400 hover:text-slate-950 sm:px-4 sm:text-sm"
+            >
+              Bỏ qua quảng cáo
+            </button>
+          </div>
+        )}
+      </div>
       {fullscreenOverlay && isFullscreen && (
         <div className={`pointer-events-none absolute right-3 top-3 z-30 hidden w-[min(340px,32vw)] transition duration-300 md:block ${controlsVisible ? "translate-x-0 opacity-100" : "translate-x-3 opacity-0"}`}>
           <div className="pointer-events-auto">{fullscreenOverlay}</div>
         </div>
       )}
       <div className={`absolute inset-x-0 bottom-0 z-20 space-y-2 p-2 transition duration-300 sm:space-y-3 sm:p-4 ${controlsVisible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0"}`}>
-        <div onClick={handleTimeline} className="h-7 cursor-pointer py-3 sm:h-6 sm:py-2">
+        <div 
+           onClick={handleTimeline} 
+           onMouseMove={handleTimelineHover}
+           onMouseLeave={() => setHoverTime(null)}
+           className="group/timeline relative h-7 cursor-pointer py-3 sm:h-6 sm:py-2"
+        >
           <div className="relative h-1.5 rounded-full bg-white/20">
+            {hoverTime !== null && (
+              <div 
+                 className="pointer-events-none absolute bottom-4 z-50 -translate-x-1/2 whitespace-nowrap rounded border border-white/10 bg-black/80 px-2 py-1 text-[11px] font-bold text-white shadow-lg backdrop-blur-md"
+                 style={{ left: `${hoverPosition}%` }}
+              >
+                 {formatTime(hoverTime)}
+              </div>
+            )}
             <div className="h-full rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,.65)]" style={{ width: `${progress}%` }} />
             {requestProgress !== null && (
               <div className="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-amber-300 shadow-[0_0_16px_rgba(252,211,77,.85)]" style={{ left: `${requestProgress}%` }}>
@@ -665,9 +759,19 @@ export function VideoPlayer({
               <PictureInPicture2 size={18} className={isPictureInPicture ? "text-cyan-200" : undefined} />
             </button>
           )}
-          <button type="button" onClick={toggleFullscreen} className="ml-auto shrink-0 rounded-md bg-white/10 p-2 hover:bg-white/20">
-            {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
-          </button>
+          <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            <button 
+              type="button" 
+              onClick={() => setIsAutoSkipEnabled(!isAutoSkipEnabled)} 
+              className={`shrink-0 rounded-md p-2 transition ${isAutoSkipEnabled ? "bg-rose-500/80 text-white" : "bg-white/10 hover:bg-white/20"}`}
+              title={isAutoSkipEnabled ? "Tắt tự động tua quảng cáo" : "Bật tự động tua quảng cáo"}
+            >
+              <Settings2 size={18} />
+            </button>
+            <button type="button" onClick={toggleFullscreen} className="shrink-0 rounded-md bg-white/10 p-2 hover:bg-white/20">
+              {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+            </button>
+          </div>
         </div>
       </div>
     </div>

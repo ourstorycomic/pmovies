@@ -55,7 +55,7 @@ export function VideoPlayer({
   locked = false,
   onRequest,
   onCancelRequest,
-  pendingRequest,
+  pendingRequests,
   onRespondRequest,
   resumeKey,
   introStart = 0,
@@ -69,8 +69,8 @@ export function VideoPlayer({
   locked?: boolean;
   onRequest?: (request: PlayerRequest) => string | void;
   onCancelRequest?: (requestId?: string) => void;
-  pendingRequest?: PlayerPendingRequest | null;
-  onRespondRequest?: (accepted: boolean) => void;
+  pendingRequests?: PlayerPendingRequest[];
+  onRespondRequest?: (requestId: string, accepted: boolean) => void;
   resumeKey?: string;
   introStart?: number;
   introEnd?: number;
@@ -285,7 +285,7 @@ export function VideoPlayer({
     const hostState = () => lockedVideo.__pmoviesHostState ?? lastLockedStateRef.current;
     const rememberState = () => {
       if (!nativeGuardRef.current) {
-        lastLockedStateRef.current = hostState();
+        lastLockedStateRef.current = { time: video.currentTime, paused: video.paused };
       }
     };
     const restoreHostState = () => {
@@ -311,9 +311,18 @@ export function VideoPlayer({
       restoreHostState();
     };
 
-    const onPlay = () => requestNativeChange({ type: "play", time: hostState().time });
-    const onPause = () => requestNativeChange({ type: "pause", time: hostState().time });
-    const onSeeking = () => requestNativeChange({ type: "seek", time: video.currentTime });
+    const onPlay = () => {
+      if (document.hidden) return;
+      requestNativeChange({ type: "play", time: hostState().time });
+    };
+    const onPause = () => {
+      if (document.hidden) return;
+      requestNativeChange({ type: "pause", time: hostState().time });
+    };
+    const onSeeking = () => {
+      if (document.hidden) return;
+      requestNativeChange({ type: "seek", time: video.currentTime });
+    };
 
     video.addEventListener("timeupdate", rememberState);
     video.addEventListener("play", onPlay);
@@ -347,7 +356,7 @@ export function VideoPlayer({
   }
 
   function visibleRequest() {
-    return pendingRequest ?? (localRequest?.type === "seek" ? { ...localRequest, id: localRequest.id ?? "local", guestName: "You" } : null);
+    return (pendingRequests && pendingRequests.length > 0) ? pendingRequests[0] : (localRequest?.type === "seek" ? { ...localRequest, id: localRequest.id ?? "local", guestName: "You" } : null);
   }
 
   function togglePlay() {
@@ -649,19 +658,19 @@ export function VideoPlayer({
           </div>
         </div>
       )}
-      {pendingRequest && pendingRequest.type !== "seek" && (
-        <div className="absolute inset-0 z-30 flex pointer-events-none items-center justify-center">
-          <div className="pointer-events-auto flex items-center gap-3 rounded-md border border-amber-300/25 bg-black/70 px-4 py-3 text-white shadow-2xl shadow-black/50 backdrop-blur-xl">
-            <div className="rounded-md bg-amber-300 p-2 text-slate-950">{pendingRequest.type === "play" ? <Play size={18} /> : <Pause size={18} />}</div>
+      <div className="absolute inset-0 z-30 flex pointer-events-none items-center justify-center flex-col gap-2">
+        {(pendingRequests || []).filter(r => r.type !== "seek").map((req) => (
+          <div key={req.id} className="pointer-events-auto flex items-center gap-3 rounded-md border border-amber-300/25 bg-black/70 px-4 py-3 text-white shadow-2xl shadow-black/50 backdrop-blur-xl">
+            <div className="rounded-md bg-amber-300 p-2 text-slate-950">{req.type === "play" ? <Play size={18} /> : <Pause size={18} />}</div>
             <div>
-              <p className="text-sm font-bold">{pendingRequest.guestName}</p>
-              <p className="text-xs text-slate-300">requests {pendingRequest.type}</p>
+              <p className="text-sm font-bold">{req.guestName}</p>
+              <p className="text-xs text-slate-300">requests {req.type}</p>
             </div>
-            <button onClick={() => onRespondRequest?.(true)} className="rounded-md bg-emerald-400 p-2 text-slate-950"><Check size={16} /></button>
-            <button onClick={() => onRespondRequest?.(false)} className="rounded-md bg-rose-400 p-2 text-white"><X size={16} /></button>
+            <button onClick={() => onRespondRequest?.(req.id, true)} className="rounded-md bg-emerald-400 p-2 text-slate-950"><Check size={16} /></button>
+            <button onClick={() => onRespondRequest?.(req.id, false)} className="rounded-md bg-rose-400 p-2 text-white"><X size={16} /></button>
           </div>
-        </div>
-      )}
+        ))}
+      </div>
       {locked && localRequest && localRequest.type !== "seek" && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
           <div className="pointer-events-auto flex items-center gap-3 rounded-md border border-amber-300/25 bg-black/70 px-4 py-3 text-amber-100 shadow-2xl backdrop-blur-xl">
@@ -716,21 +725,27 @@ export function VideoPlayer({
               </div>
             )}
             <div className="h-full rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,.65)]" style={{ width: `${progress}%` }} />
-            {requestProgress !== null && (
-              <div className="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-amber-300 shadow-[0_0_16px_rgba(252,211,77,.85)]" style={{ left: `${requestProgress}%` }}>
-                <div className="absolute bottom-5 left-1/2 w-44 -translate-x-1/2 rounded-md border border-amber-300/25 bg-black/75 p-2 text-xs text-amber-50 shadow-xl backdrop-blur-xl sm:w-52">
-                  <p className="font-bold">{shownRequest?.guestName} {pendingRequest ? "requests" : "requested"} {formatTime(shownRequest?.time ?? 0)}</p>
-                  {pendingRequest && (
+            {(pendingRequests || []).filter(r => r.type === "seek").map((req) => {
+              const reqProgress = duration ? ((req.time ?? 0) / duration) * 100 : 0;
+              return (
+                <div key={req.id} className="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-amber-300 shadow-[0_0_16px_rgba(252,211,77,.85)] group-hover/timeline:z-50" style={{ left: `${reqProgress}%` }}>
+                  <div className="absolute bottom-5 left-1/2 hidden w-44 -translate-x-1/2 rounded-md border border-amber-300/25 bg-black/75 p-2 text-xs text-amber-50 shadow-xl backdrop-blur-xl hover:block group-hover/timeline:block sm:w-52">
+                    <p className="font-bold">{req.guestName} requests {formatTime(req.time ?? 0)}</p>
                     <div className="mt-2 flex gap-2">
-                      <button onClick={(event) => { event.stopPropagation(); onRespondRequest?.(true); }} className="rounded-md bg-emerald-400 p-1.5 text-slate-950"><Check size={14} /></button>
-                      <button onClick={(event) => { event.stopPropagation(); onRespondRequest?.(false); }} className="rounded-md bg-rose-400 p-1.5 text-white"><X size={14} /></button>
+                      <button onClick={(event) => { event.stopPropagation(); onRespondRequest?.(req.id, true); }} className="rounded-md bg-emerald-400 p-1.5 text-slate-950"><Check size={14} /></button>
+                      <button onClick={(event) => { event.stopPropagation(); onRespondRequest?.(req.id, false); }} className="rounded-md bg-rose-400 p-1.5 text-white"><X size={14} /></button>
                     </div>
-                  )}
-                  {!pendingRequest && localRequest?.type === "seek" && (
-                    <button onClick={cancelLocalRequest} className="mt-2 rounded-md bg-white/10 p-1.5 text-white hover:bg-rose-400">
-                      <X size={14} />
-                    </button>
-                  )}
+                  </div>
+                </div>
+              );
+            })}
+            {localRequest?.type === "seek" && (
+              <div className="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-amber-300 shadow-[0_0_16px_rgba(252,211,77,.85)]" style={{ left: `${duration ? ((localRequest.time ?? 0) / duration) * 100 : 0}%` }}>
+                <div className="absolute bottom-5 left-1/2 w-44 -translate-x-1/2 rounded-md border border-amber-300/25 bg-black/75 p-2 text-xs text-amber-50 shadow-xl backdrop-blur-xl sm:w-52">
+                  <p className="font-bold">You requested {formatTime(localRequest.time ?? 0)}</p>
+                  <button onClick={cancelLocalRequest} className="mt-2 rounded-md bg-white/10 p-1.5 text-white hover:bg-rose-400">
+                    <X size={14} />
+                  </button>
                 </div>
               </div>
             )}

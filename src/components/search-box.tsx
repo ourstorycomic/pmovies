@@ -12,6 +12,10 @@ export function SearchBox() {
   function submit(event: React.FormEvent) {
     event.preventDefault();
     const value = query.trim();
+    if (value.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      router.push(`/watch-party/${value}`);
+      return;
+    }
     router.push(value ? `/?q=${encodeURIComponent(value)}` : "/");
   }
 
@@ -21,7 +25,7 @@ export function SearchBox() {
       <input
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search movies..."
+        placeholder="Search movies or paste Room ID..."
         className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-slate-400"
       />
     </form>

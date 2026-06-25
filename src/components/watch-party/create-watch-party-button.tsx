@@ -64,7 +64,7 @@ export function CreateWatchPartyButton({
         return;
       }
       if (payload.roomId && payload.hostToken) {
-        sessionStorage.setItem(`pmovies_host_token:${payload.roomId}`, payload.hostToken);
+        localStorage.setItem(`pmovies_host_token:${payload.roomId}`, payload.hostToken);
       }
       const absolute = `${window.location.origin}${payload.url}`;
       setRoomUrl(absolute);

@@ -2,8 +2,10 @@ import { MotionShell } from "@/components/motion-shell";
 import { MovieActions } from "@/components/movies/movie-actions";
 import { MovieCardView } from "@/components/movies/movie-card";
 import { MovieRow } from "@/components/movies/movie-row";
+import { JoinRoomForm } from "@/components/watch-party/join-room-form";
 import { fetchKkJson } from "@/lib/kkphim";
 import { stripHtml } from "@/lib/utils";
+import { redirect } from "next/navigation";
 import type { MovieCard } from "@/types/movie";
 
 type MovieListPayload = {
@@ -19,6 +21,10 @@ function pickMovies(payload: MovieListPayload | null): MovieCard[] {
 export default async function Home({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q } = await searchParams;
   const keyword = q?.trim();
+
+  if (keyword && keyword.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+    redirect(`/watch-party/${keyword}`);
+  }
 
   if (q !== undefined && !keyword) {
     return (
@@ -38,6 +44,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
                 Search
               </button>
             </form>
+            <div className="mt-8 border-t border-white/10 pt-8">
+              <p className="mb-4 text-sm font-bold uppercase tracking-[.2em] text-cyan-200">Watch Party</p>
+              <JoinRoomForm />
+            </div>
           </section>
         </main>
       </MotionShell>
@@ -61,6 +71,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
               <button className="h-11 rounded-md bg-cyan-300 px-5 font-bold text-slate-950">Search</button>
             </form>
             <p className="mt-2 text-slate-300">{results.length} movies found</p>
+            <div className="mt-6 flex flex-col gap-3 border-t border-white/10 pt-6 sm:flex-row sm:items-center">
+              <span className="text-sm font-bold uppercase tracking-[.2em] text-cyan-200">Watch Party</span>
+              <div className="flex-1 max-w-sm"><JoinRoomForm /></div>
+            </div>
           </div>
           <div className="flex flex-wrap gap-4">
             {results.map((movie) => <MovieCardView key={movie.slug} movie={movie} />)}
@@ -92,6 +106,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
               <h1 className="text-5xl font-black text-white drop-shadow-2xl sm:text-7xl">{hero.name}</h1>
               <p className="mt-4 max-w-xl text-base leading-7 text-slate-200">{stripHtml(hero.origin_name)} {hero.episode_current ? ` - ${hero.episode_current}` : ""}</p>
               <div className="mt-7"><MovieActions movie={hero} /></div>
+              <div className="mt-8"><JoinRoomForm /></div>
             </div>
           </div>
         </section>

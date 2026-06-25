@@ -123,9 +123,9 @@ export function VideoPlayer({
         enableWorker: true,
         startLevel: -1,
         capLevelToPlayerSize: true,
-        maxBufferLength: 40,
-        maxMaxBufferLength: 80,
-        backBufferLength: 30,
+        maxBufferLength: 120,
+        maxMaxBufferLength: 1200,
+        backBufferLength: 90,
       });
       hlsRef.current = hls;
       hls.loadSource(src);
@@ -150,9 +150,7 @@ export function VideoPlayer({
               break;
           }
         } else if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
-           // Nudge the player if it stalls for too long
-           console.warn("HLS Buffer Stalled, nudging...");
-           hls?.recoverMediaError();
+           console.warn("HLS Buffer Stalled, waiting for network...");
         }
       });
     } else {

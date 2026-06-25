@@ -3,6 +3,7 @@
 import Hls from "hls.js";
 import { Check, Flag, Loader2, Maximize, Minimize, Pause, PictureInPicture2, Play, Settings2, Volume2, VolumeX, X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type PlayerRequest = {
   type: "seek" | "pause" | "play";
@@ -102,6 +103,7 @@ export function VideoPlayer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPictureInPicture, setIsPictureInPicture] = useState(false);
   const [pictureInPictureSupported, setPictureInPictureSupported] = useState(false);
+  const [pipContainer, setPipContainer] = useState<HTMLElement | null>(null);
   const [streamError, setStreamError] = useState("");
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPosition, setHoverPosition] = useState<number>(0);
@@ -494,11 +496,17 @@ export function VideoPlayer({
     slot?.append(video);
     video.className = "";
 
+    const overlaySlot = pipWindow.document.createElement("div");
+    overlaySlot.className = "absolute right-4 top-4 z-50 h-[320px] w-[300px]";
+    shell.append(overlaySlot);
+    setPipContainer(overlaySlot);
+
     const onClose = () => {
       videoSlotRef.current?.append(video);
       video.className = "h-full w-full object-contain";
       documentPipWindowRef.current = null;
       setIsPictureInPicture(false);
+      setPipContainer(null);
     };
 
     let idleTimer: number | null = null;
@@ -577,7 +585,19 @@ export function VideoPlayer({
   function showControlsTemporarily() {
     setControlsVisible(true);
     if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
-    hideTimerRef.current = window.setTimeout(() => setControlsVisible(false), 2600);
+    hideTimerRef.current = window.setTimeout(() => {
+      const active = document.activeElement;
+      const isInputFocused = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || (active as HTMLElement).isContentEditable);
+      // Check if focus is inside player or pip window
+      const inPlayer = containerRef.current?.contains(active);
+      const inPip = pipContainer?.ownerDocument?.body.contains(active);
+      
+      if (isInputFocused && (inPlayer || inPip)) {
+        showControlsTemporarily(); // Re-trigger the timer instead of hiding
+        return;
+      }
+      setControlsVisible(false);
+    }, 2600);
   }
 
   const handleKeyDownRef = useRef({ togglePlay, showControlsTemporarily });
@@ -701,10 +721,15 @@ export function VideoPlayer({
           </div>
         )}
       </div>
-      {fullscreenOverlay && isFullscreen && (
-        <div className={`pointer-events-none absolute right-3 top-3 z-30 hidden w-[min(340px,32vw)] transition duration-300 md:block ${controlsVisible ? "translate-x-0 opacity-100" : "translate-x-3 opacity-0"}`}>
-          <div className="pointer-events-auto">{fullscreenOverlay}</div>
-        </div>
+      {fullscreenOverlay && (
+        <>
+          {isFullscreen && (
+            <div className={`pointer-events-none absolute right-3 top-3 z-30 hidden w-[min(340px,32vw)] transition duration-300 md:block ${controlsVisible ? "translate-x-0 opacity-100" : "translate-x-3 opacity-0"}`}>
+              <div className="pointer-events-auto">{fullscreenOverlay}</div>
+            </div>
+          )}
+          {pipContainer && createPortal(fullscreenOverlay, pipContainer)}
+        </>
       )}
       <div className={`absolute inset-x-0 bottom-0 z-20 space-y-2 p-2 transition duration-300 sm:space-y-3 sm:p-4 ${controlsVisible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0"}`}>
         <div 

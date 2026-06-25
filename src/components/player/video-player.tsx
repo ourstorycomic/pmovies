@@ -319,8 +319,9 @@ export function VideoPlayer({
       if (document.hidden) return;
       requestNativeChange({ type: "pause", time: hostState().time });
     };
+    const mountTime = Date.now();
     const onSeeking = () => {
-      if (document.hidden) return;
+      if (document.hidden || Date.now() - mountTime < 2000) return;
       requestNativeChange({ type: "seek", time: video.currentTime });
     };
 
@@ -486,7 +487,7 @@ export function VideoPlayer({
         <div class="request-card"><span class="request-text"></span><button class="cancel">×</button></div>
         <div class="controls">
           <div class="timeline"><div class="track"><div class="progress"></div><div class="marker"><div class="bubble"></div></div></div></div>
-          <div class="row"><button class="play">▶</button><span class="time">0:00</span><button class="mute">🔊</button><select class="quality"><option value="-1">Auto</option></select><button class="close">×</button></div>
+          <div class="row"><button class="play">▶</button><span class="time">0:00</span><button class="mute">🔊</button><select class="quality"><option value="-1">Auto</option></select></div>
         </div>
       </div>
     `;
@@ -526,7 +527,6 @@ export function VideoPlayer({
 
     (pipWindow.document.querySelector(".play") as HTMLButtonElement).onclick = () => togglePlay();
     (pipWindow.document.querySelector(".mute") as HTMLButtonElement).onclick = () => { video.muted = !video.muted; };
-    (pipWindow.document.querySelector(".close") as HTMLButtonElement).onclick = () => pipWindow.close();
     (pipWindow.document.querySelector(".cancel") as HTMLButtonElement).onclick = () => cancelLocalRequest();
     (pipWindow.document.querySelector(".timeline") as HTMLElement).onclick = (event) => {
       const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();

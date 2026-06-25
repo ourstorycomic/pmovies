@@ -171,7 +171,7 @@ export function WatchPartyRoom({ room, userId, initialMessages }: { room: Room; 
       })
       .on("broadcast", { event: "control_request" }, ({ payload }) => {
         if (!isHost) return;
-        setPendingRequests((prev) => [...prev.filter((r) => r.id !== payload.id), payload as ControlRequest]);
+        setPendingRequests((prev) => [...prev.filter((r) => r.guestId !== payload.guestId), payload as ControlRequest]);
       })
       .on("broadcast", { event: "control_cancel" }, ({ payload }) => {
         if (!isHost) return;

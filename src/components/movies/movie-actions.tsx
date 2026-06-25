@@ -2,6 +2,7 @@
 
 import { Bookmark, Heart, Play } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -40,9 +41,21 @@ export function MovieActions({ movie, compact = false }: { movie: MovieCard; com
     setBusy(null);
   }
 
+  const pathname = usePathname();
+  const isCurrentMoviePage = pathname === `/movie/${movie.slug}`;
+
+  function handlePlayClick(e: React.MouseEvent) {
+    if (isCurrentMoviePage) {
+      e.preventDefault();
+      document.getElementById("player")?.scrollIntoView({ behavior: "smooth" });
+    }
+  }
+
   return (
     <div className="flex items-center gap-2">
-      <Button asChild className={compact ? "h-9 px-3" : ""}><Link href={`/movie/${movie.slug}`}><Play size={16} /> Play</Link></Button>
+      <Button asChild className={compact ? "h-9 px-3" : ""}>
+        <Link href={`/movie/${movie.slug}`} onClick={handlePlayClick}><Play size={16} /> Play</Link>
+      </Button>
       <Button variant="glass" className={compact ? "h-9 w-9 px-0" : ""} onClick={likeMovie} disabled={busy === "like"} title="Like"><Heart size={16} /></Button>
       <Button variant="glass" className={compact ? "h-9 w-9 px-0" : ""} onClick={saveMovie} disabled={busy === "save"} title="Save"><Bookmark size={16} /></Button>
     </div>

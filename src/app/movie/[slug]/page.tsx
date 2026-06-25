@@ -117,7 +117,7 @@ export default async function MoviePage({ params, searchParams }: { params: Prom
           </div>
         </div>
       </section>
-      <section className="mx-auto grid max-w-7xl gap-5 px-3 pb-20 sm:gap-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <section id="player" className="mx-auto grid max-w-7xl gap-5 px-3 pb-20 sm:gap-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0">
           <VideoPlayer src={activeEpisode?.link_m3u8} poster={movie.thumb_url || movie.poster_url} resumeKey={`${movie.slug}:${activeEpisode?.slug ?? activeEpisode?.name ?? "default"}`} introStart={introStart} introEnd={introEnd} />
           {!activeEpisode && (

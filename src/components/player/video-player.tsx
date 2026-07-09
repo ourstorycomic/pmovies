@@ -107,6 +107,8 @@ export function VideoPlayer({
   const [streamError, setStreamError] = useState("");
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPosition, setHoverPosition] = useState<number>(0);
+  const [seekFlash, setSeekFlash] = useState<"back" | "forward" | null>(null);
+  const seekFlashTimerRef = useRef<number | null>(null);
   
   const [isAutoSkipEnabled, setIsAutoSkipEnabled] = useState(false);
 
@@ -600,8 +602,8 @@ export function VideoPlayer({
     }, 2600);
   }
 
-  const handleKeyDownRef = useRef({ togglePlay, showControlsTemporarily });
-  handleKeyDownRef.current = { togglePlay, showControlsTemporarily };
+  const handleKeyDownRef = useRef({ togglePlay, showControlsTemporarily, seekTo, seekFlashTimerRef, setSeekFlash, duration, currentTime, videoRef });
+  handleKeyDownRef.current = { togglePlay, showControlsTemporarily, seekTo, seekFlashTimerRef, setSeekFlash, duration, currentTime, videoRef };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -620,6 +622,19 @@ export function VideoPlayer({
         e.preventDefault();
         handleKeyDownRef.current.togglePlay();
         handleKeyDownRef.current.showControlsTemporarily();
+      }
+      if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
+        e.preventDefault();
+        const { videoRef: vRef, seekTo: seek, seekFlashTimerRef: flashTimer, setSeekFlash: flash } = handleKeyDownRef.current;
+        const video = vRef.current;
+        if (!video) return;
+        const delta = e.code === "ArrowLeft" ? -10 : 10;
+        const next = Math.max(0, Math.min(video.duration || 0, video.currentTime + delta));
+        seek(next);
+        handleKeyDownRef.current.showControlsTemporarily();
+        flash(e.code === "ArrowLeft" ? "back" : "forward");
+        if (flashTimer.current) window.clearTimeout(flashTimer.current);
+        flashTimer.current = window.setTimeout(() => flash(null), 700);
       }
     };
     document.addEventListener("keydown", handleKeyDown);
@@ -652,6 +667,13 @@ export function VideoPlayer({
     >
       <video ref={videoRef} poster={poster} playsInline className="h-full w-full object-contain" />
       <button type="button" onClick={togglePlay} className="absolute inset-0 z-10" aria-label={locked ? "Request playback change" : "Toggle playback"} />
+      {seekFlash !== null && (
+        <div className="pointer-events-none absolute inset-0 z-25 flex items-center justify-center">
+          <div className={`flex items-center gap-2 rounded-xl bg-black/60 px-5 py-3 text-white backdrop-blur-sm transition-opacity animate-in fade-in zoom-in-90 duration-150`}>
+            <span className="text-2xl font-black">{seekFlash === "back" ? "← 10s" : "10s →"}</span>
+          </div>
+        </div>
+      )}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/15 opacity-100 transition" />
       {(!ready || buffering) && !streamError && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center text-cyan-300 drop-shadow-[0_0_12px_rgba(103,232,249,0.8)]">

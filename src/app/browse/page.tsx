@@ -60,8 +60,8 @@ export default async function BrowsePage({
   const pagination = pickPagination(moviesPayload);
   const currentPage = pagination?.currentPage || parseInt(params.page || "1", 10) || 1;
   const totalPages = pagination?.totalPages || 1;
-  const categories = Array.isArray(categoriesPayload) ? categoriesPayload : categoriesPayload?.data ?? [];
-  const countries = Array.isArray(countriesPayload) ? countriesPayload : countriesPayload?.data ?? [];
+  const categories = Array.isArray(categoriesPayload) ? categoriesPayload : (categoriesPayload as any)?.data?.items ?? (categoriesPayload as any)?.data ?? [];
+  const countries = Array.isArray(countriesPayload) ? countriesPayload : (countriesPayload as any)?.data?.items ?? (countriesPayload as any)?.data ?? [];
 
   return (
     <MotionShell>

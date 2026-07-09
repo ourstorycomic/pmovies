@@ -1,4 +1,4 @@
-import { Star } from "lucide-react";
+import { Star, Clapperboard, User } from "lucide-react";
 import { notFound } from "next/navigation";
 import { MotionShell } from "@/components/motion-shell";
 import { MovieActions } from "@/components/movies/movie-actions";
@@ -111,6 +111,27 @@ export default async function MoviePage({ params, searchParams }: { params: Prom
             <h1 className="text-3xl font-black text-white sm:text-5xl lg:text-6xl">{movie.name}</h1>
             <p className="mt-3 text-base text-slate-300 sm:text-xl">{movie.origin_name}</p>
             <p className="mt-5 line-clamp-5 max-w-2xl text-sm leading-6 text-slate-200 sm:text-base sm:leading-7">{stripHtml(movie.content)}</p>
+            {movie.director && movie.director.length > 0 && (
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <span className="flex items-center gap-1 text-xs font-bold uppercase tracking-widest text-slate-400"><Clapperboard size={13} /> Đạo diễn</span>
+                {movie.director.map((d) => (
+                  <span key={d} className="rounded-md bg-white/10 px-2.5 py-1 text-xs font-semibold text-slate-200">{d}</span>
+                ))}
+              </div>
+            )}
+            {movie.actor && movie.actor.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-start gap-2">
+                <span className="flex items-center gap-1 text-xs font-bold uppercase tracking-widest text-slate-400 mt-1"><User size={13} /> Diễn viên</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {movie.actor.slice(0, 12).map((a) => (
+                    <span key={a} className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-slate-300">{a}</span>
+                  ))}
+                  {movie.actor.length > 12 && (
+                    <span className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-slate-400">+{movie.actor.length - 12} more</span>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="mt-7"><MovieActions movie={movie} /></div>
             <CreateWatchPartyButton movie={movie} streamUrl={activeEpisode?.link_m3u8} episodeName={activeEpisode?.name} introStart={introStart} introEnd={introEnd} />
             <JoinWatchPartyForm />

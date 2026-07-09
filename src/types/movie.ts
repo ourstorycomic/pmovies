@@ -8,6 +8,7 @@ export type MovieCard = {
   quality?: string;
   lang?: string;
   episode_current?: string;
+  tmdb?: { vote_average?: number; vote_count?: number; season?: number };
 };
 
 export type EpisodeLink = {
@@ -25,5 +26,7 @@ export type MovieDetail = MovieCard & {
   country?: { name: string; slug: string }[];
   tmdb?: { vote_average?: number; vote_count?: number; season?: number };
   imdb?: { id?: string };
+  actor?: string[];
+  director?: string[];
   episodes?: { server_name: string; server_data: EpisodeLink[] }[];
 };

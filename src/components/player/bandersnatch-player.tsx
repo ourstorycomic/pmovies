@@ -713,10 +713,8 @@ export function BandersnatchPlayer({
     }
     setMyVote(newVote);
 
-    // Solo mode resolves immediately; watch-party votes wait for the choice window to end.
-    if (!isWatchParty && newVote) {
-      resolveChoice(activeCP, newVote);
-    }
+    // Solo mode: just register the vote and wait for the choice window to end
+    // (do not resolve immediately)
   }
 
   function togglePlay() {

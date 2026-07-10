@@ -373,6 +373,12 @@ export function WatchPartyRoom({ room, userId, initialMessages }: { room: Room; 
               incomingVote={incomingVote}
               incomingChoice={incomingChoice}
               onReady={(v) => { videoRef.current = v; }}
+              onRequest={(request) => sendControlRequest(request.type, request.time)}
+              onCancelRequest={cancelControlRequest}
+              pendingRequests={isHost ? pendingRequests as PlayerPendingRequest[] : undefined}
+              onRespondRequest={respondToRequest}
+              requestResolutionKey={requestResolutionKey}
+              fullscreenOverlay={<RoomChat messages={messages} body={body} setBody={setBody} sendMessage={sendMessage} compact />}
             />
           ) : (
             <VideoPlayer

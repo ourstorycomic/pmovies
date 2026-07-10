@@ -102,48 +102,52 @@ export const CHOICE_POINTS: ChoicePoint[] = [
   ]),
 
   // 3J: Visit Dr Haynes or Follow Colin?
+  // VisitHaynesChoice → 3R (startTimeMs=1577120); FollowColinChoice → 3M (startTimeMs=2776800)
   cp("3J", "Đến gặp bác sĩ hay theo dõi Colin?", 1559400, 1577120, [
-    ["nsg-VisitHaynesChoice", 1577120],
-    ["nsg-FollowColinChoice", 1864640],
+    ["nsg-VisitHaynesChoice", 1577120], // Gặp Haynes → 3R (cắn móng/kéo tai)
+    ["nsg-FollowColinChoice", 2776800], // Theo Colin → 3M (LSD scene)
   ]),
 
-  // 3L variant
+  // 3L variant (same logic)
   cp("3L", "Đến gặp bác sĩ hay theo dõi Colin?", 1559400, 1577120, [
     ["nsg-VisitHaynesChoice", 1577120],
-    ["nsg-FollowColinChoice", 1864640],
+    ["nsg-FollowColinChoice", 2776800],
   ]),
 
   // 3R: Bite nails or pull earlobe?
+  // 3U (bite nails) startTimeMs=1645800; 3T (pull earlobe) startTimeMs=15427080
   cp("3R", "Cắn móng tay hay kéo tai?", 1628080, 1645800, [
-    ["3U", 1645800],
-    ["3T", 1645800],
+    ["3U", 1645800],     // Cắn móng tay → 3U
+    ["3T", 15427080],   // Kéo tai → 3T (nhánh khác, xa trong video)
   ]),
 
   // 3X: Pills — take or flush?
+  // 8B_Variant2 (take) -> 8B @ 1738880; nsg-FlushThemChoice3X (flush) -> 3Vfs @ 1864640
   cp("3X", "Làm gì với những viên thuốc?", 1721200, 1738880, [
-    ["8B_Variant2", 1738880],
-    ["nsg-FlushThemChoice3X", 1738880],
+    ["8B_Variant2", 1738880],          // Lấy chúng → uống thuốc (8B)
+    ["nsg-FlushThemChoice3X", 1864640], // Thải xuống bồn → 3Vfs (chọn đập bàn/phá máy)
   ]),
 
-  // 3Xxa variant
+  // 3Xxa variant (second pills encounter)
   cp("3Xxa", "Làm gì với những viên thuốc?", 1846920, 1864640, [
-    ["8B_Variant2", 1738880],
-    ["nsg-FlushThemChoice3X", 1738880],
+    ["8B_Variant2", 1738880],          // Lấy chúng → uống thuốc (8B)
+    ["nsg-FlushThemChoice3X", 1864640], // Thải xuống bồn → 3Vfs
   ]),
 
   // 3Vfs: Destroy computer or hit desk?
+  // 3Y (destroy computer) startTimeMs=2109600; 3Z (hit desk) startTimeMs=2193720
   cp("3Vfs", "Phá máy tính hay đập bàn?", 2091920, 2109600, [
-    ["3Y", 2109600],
-    ["3Z", 2109600],
+    ["3Y", 2109600],  // Phá máy tính
+    ["3Z", 2193720],  // Đập bàn
   ]),
   cp("3Vbs", "Phá máy tính hay đập bàn?", 2091920, 2109600, [
-    ["3Y", 2109600], ["3Z", 2109600],
+    ["3Y", 2109600], ["3Z", 2193720],
   ]),
   cp("3Vbf", "Phá máy tính hay đập bàn?", 2091920, 2109600, [
-    ["3Y", 2109600], ["3Z", 2109600],
+    ["3Y", 2109600], ["3Z", 2193720],
   ]),
   cp("3Vff", "Phá máy tính hay đập bàn?", 2091920, 2109600, [
-    ["3Y", 2109600], ["3Z", 2109600],
+    ["3Y", 2109600], ["3Z", 2193720],
   ]),
 
   // 3Z: Photo or book?
@@ -152,24 +156,28 @@ export const CHOICE_POINTS: ChoicePoint[] = [
     ["nsg-BookChoice", 2242720],
   ]),
 
-  // 3M: Take LSD?
-  cp("3M", "Uống LSD cùng Colin?", 2960880, 2978600, [
-    ["3N", 2978600],
-    ["3P", 2978600],
+  // 3M: Take LSD? — interaction zone [2966160, 2983840] from SegmentMap
+  // 3N (yes) startTimeMs=2983840; 3P (no) startTimeMs=15033600 (alternate branch)
+  cp("3M", "Uống LSD cùng Colin?", 2966160, 2983840, [
+    ["3N", 2983840],    // Có → 3N (Stefan & Colin nhảy)
+    ["3P", 15033600],  // Không → 3P (nhánh khác, xa)
   ]),
 
-  // 3N: Who jumps?
-  cp("3N", "Ai sẽ nhảy xuống?", 3226520, 3244240, [
-    ["8L", 3244240],
-    ["3Q", 3244240],
+  // 3N: Who jumps? (yes-LSD path) — interaction zone [3231800, 3253520] from SegmentMap
+  // 8L (Stefan jumps) startTimeMs=3253520; 3Q (Colin jumps) startTimeMs=3390680
+  cp("3N", "Ai sẽ nhảy xuống?", 3231800, 3253520, [
+    ["8L", 3253520],   // Stefan nhảy
+    ["3Q", 3390680],   // Colin nhảy
   ]),
-  cp("3P", "Ai sẽ nhảy xuống?", 3226520, 3244240, [
-    ["8L", 3244240], ["3Q", 3244240],
+  // 3P: Who jumps? (no-LSD alternate path) — interaction zone [15286320, 15308000]
+  cp("3P", "Ai sẽ nhảy xuống?", 15286320, 15308000, [
+    ["8L", 3253520], ["3Q", 3390680],
   ]),
 
-  // 3Nx (Colin path)
-  cp("3Nx", "Ai sẽ nhảy?", 3363680, 3381400, [
-    ["8L", 3381400], ["3Q", 3381400],
+  // 3Nx (Colin path variant) — interaction zone [3372960, 3390680] from SegmentMap
+  cp("3Nx", "Ai sẽ nhảy?", 3372960, 3390680, [
+    ["8L", 3253520],   // Stefan nhảy
+    ["3Q", 3390680],   // Colin nhảy
   ]),
 
   // 5A: Kill Dad?

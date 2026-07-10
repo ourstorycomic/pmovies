@@ -101,7 +101,7 @@ function ChoiceOverlay({
   const pct = Math.max(0, Math.min(100, (countdown / (maxMs / 1000)) * 100));
 
   return (
-    <div className="absolute inset-x-0 bottom-3 z-50 flex justify-center px-3 sm:px-4">
+    <div className="absolute inset-x-0 bottom-16 z-[70] flex justify-center px-3 sm:px-4">
       {/* Gradient fog from bottom */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/80 via-black/45 to-transparent" />
 
@@ -938,7 +938,7 @@ export function BandersnatchPlayer({
 
       {/* Controls — always interactive when visible */}
       <div
-        className={`absolute inset-x-0 bottom-0 z-[60] space-y-2 p-3 transition-all duration-300 sm:p-4 ${controlsVisible || activeCP ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0"}`}
+        className={`absolute inset-x-0 bottom-0 z-[60] space-y-2 p-3 transition-all duration-300 sm:p-4 ${!activeCP && (controlsVisible) ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0"}`}
       >
         {/* Timeline */}
         <div

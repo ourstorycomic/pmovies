@@ -101,18 +101,18 @@ function ChoiceOverlay({
   const pct = Math.max(0, Math.min(100, (countdown / (maxMs / 1000)) * 100));
 
   return (
-    <div className="absolute inset-0 z-50 flex flex-col items-center justify-end pb-16 sm:pb-20">
+    <div className="absolute inset-x-0 bottom-3 z-50 flex justify-center px-3 sm:px-4">
       {/* Gradient fog from bottom */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/80 via-black/45 to-transparent" />
 
-      <div className="relative z-10 w-full max-w-2xl px-4">
+      <div className="relative z-10 w-full max-w-3xl rounded-2xl border border-white/10 bg-black/65 p-3 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:p-4">
         {/* Description */}
-        <p className="mb-3 text-center text-xs font-bold uppercase tracking-[.2em] text-amber-400 drop-shadow-lg sm:text-sm">
+        <p className="mb-2 text-center text-[10px] font-bold uppercase tracking-[.2em] text-amber-400 drop-shadow-lg sm:mb-3 sm:text-xs">
           {cp.descriptionVi}
         </p>
 
         {/* Countdown bar */}
-        <div className="mb-5 h-1 w-full overflow-hidden rounded-full bg-white/20">
+        <div className="mb-3 h-1 w-full overflow-hidden rounded-full bg-white/20 sm:mb-4">
           <div
             className="h-full rounded-full bg-amber-400 transition-all duration-1000 ease-linear"
             style={{ width: `${pct}%` }}
@@ -120,7 +120,7 @@ function ChoiceOverlay({
         </div>
 
         {/* Choice buttons */}
-        <div className={`grid gap-3 ${cp.choices.length === 2 ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-3"}`}>
+        <div className={`grid gap-2 sm:gap-3 ${cp.choices.length === 2 ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-3"}`}>
           {cp.choices.map((c, i) => {
             const voteCount = votes[c.id] ?? 0;
             const voted = myVote === c.id;
@@ -131,7 +131,7 @@ function ChoiceOverlay({
                 key={c.id}
                 onClick={() => onChoose(c.id)}
                 className={`
-                  group relative overflow-hidden rounded-xl border-2 px-4 py-4 text-left transition-all duration-200
+                  group relative overflow-hidden rounded-xl border-2 px-3 py-3 text-left transition-all duration-200 sm:px-4 sm:py-4
                   ${voted
                     ? "border-amber-400 bg-amber-400/20 shadow-[0_0_24px_rgba(251,191,36,0.4)]"
                     : "border-white/20 bg-black/50 hover:border-white/60 hover:bg-white/10"
@@ -153,12 +153,12 @@ function ChoiceOverlay({
                   </p>
 
                   {isWatchParty && (
-                    <div className="mt-2 flex items-center justify-between">
-                      <span className="text-xs text-slate-400">
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-slate-400 sm:text-xs">
                         {voteCount} phiếu{total > 0 ? ` (${votePct}%)` : ""}
                       </span>
                       {voted && (
-                        <span className="text-xs font-bold text-amber-400">✓ Đã chọn</span>
+                        <span className="text-[11px] font-bold text-amber-400 sm:text-xs">✓ Đã chọn</span>
                       )}
                     </div>
                   )}
@@ -438,7 +438,7 @@ export function BandersnatchPlayer({
         .request-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; align-items: center; gap: 10px; border: 1px solid rgba(252,211,77,.28); background: rgba(0,0,0,.72); color: #fef3c7; border-radius: 10px; padding: 10px 12px; box-shadow: 0 18px 40px rgba(0,0,0,.4); backdrop-filter: blur(16px); z-index: 30; }
         .cancel { background: rgba(244,63,94,.78); }
         .loader { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; color: #fbbf24; animation: spin 1s linear infinite; pointer-events: none; z-index: 10; }
-        .choice-slot { position: absolute; inset: 0; z-index: 20; pointer-events: none; }
+        .choice-slot { position: absolute; inset: 0; z-index: 20; pointer-events: auto; }
         @keyframes spin { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
       </style>
       <div class="shell">
@@ -713,8 +713,8 @@ export function BandersnatchPlayer({
     }
     setMyVote(newVote);
 
-    // Solo mode or host: immediately resolve on pick
-    if ((!isWatchParty || isHost) && newVote) {
+    // Solo mode resolves immediately; watch-party votes wait for the choice window to end.
+    if (!isWatchParty && newVote) {
       resolveChoice(activeCP, newVote);
     }
   }
@@ -918,7 +918,7 @@ export function BandersnatchPlayer({
       {/* Interactive Choice Overlay */}
       {choiceOverlay && (
         pipChoiceContainer
-          ? createPortal(<div className="pointer-events-auto h-full w-full">{choiceOverlay}</div>, pipChoiceContainer)
+          ? createPortal(<div className="pointer-events-auto relative h-full w-full">{choiceOverlay}</div>, pipChoiceContainer)
           : choiceOverlay
       )}
 

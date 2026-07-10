@@ -4,9 +4,12 @@ import { Copy, Send, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { VideoPlayer, type PlayerPendingRequest } from "@/components/player/video-player";
+import { BandersnatchPlayer, type BandersnatchVote } from "@/components/player/bandersnatch-player";
 import { Button } from "@/components/ui/button";
 import { getGuestIdentity, type GuestIdentity } from "@/lib/guest";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
+
+const BANDERSNATCH_SLUG = "guong-den-bandersnatch";
 
 type Room = {
   id: string;
@@ -113,6 +116,11 @@ export function WatchPartyRoom({ room, userId, initialMessages }: { room: Room; 
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const applyingRemoteRef = useRef(false);
 
+  // Bandersnatch interactive state
+  const isBandersnatch = room.movie_slug === BANDERSNATCH_SLUG;
+  const [incomingVote, setIncomingVote] = useState<BandersnatchVote | null>(null);
+  const [incomingChoice, setIncomingChoice] = useState<{ choicePointId: string; choiceId: string } | null>(null);
+
   useEffect(() => {
     queueMicrotask(() => setGuest(getGuestIdentity()));
   }, []);
@@ -176,6 +184,12 @@ export function WatchPartyRoom({ room, userId, initialMessages }: { room: Room; 
       .on("broadcast", { event: "control_cancel" }, ({ payload }) => {
         if (!isHost) return;
         setPendingRequests((prev) => prev.filter((r) => r.id !== payload.requestId));
+      })
+      .on("broadcast", { event: "bandersnatch_vote" }, ({ payload }) => {
+        if (isHost) setIncomingVote(payload as BandersnatchVote);
+      })
+      .on("broadcast", { event: "bandersnatch_choice" }, ({ payload }) => {
+        if (!isHost) setIncomingChoice(payload as { choicePointId: string; choiceId: string });
       })
       .on("broadcast", { event: "control_response" }, ({ payload }) => {
         if (!guest || payload.guestId !== guest.id) return;
@@ -332,25 +346,51 @@ export function WatchPartyRoom({ room, userId, initialMessages }: { room: Room; 
     });
   }
 
+  function sendBandersnatchVote(vote: BandersnatchVote) {
+    void channelRef.current?.send({ type: "broadcast", event: "bandersnatch_vote", payload: vote });
+  }
+
+  function sendBandersnatchChoice(choicePointId: string, choiceId: string) {
+    void channelRef.current?.send({
+      type: "broadcast",
+      event: "bandersnatch_choice",
+      payload: { choicePointId, choiceId },
+    });
+  }
+
   return (
     <div className="grid gap-4 px-3 pb-6 sm:gap-6 sm:px-0 lg:grid-cols-[minmax(0,1fr)_360px]">
       <section className="min-w-0">
         <div>
-          <VideoPlayer
-            src={room.stream_url}
-            poster={room.poster_url}
-            externalRef={videoRef}
-            locked={!isHost}
-            onRequest={(request) => sendControlRequest(request.type, request.time)}
-            onCancelRequest={cancelControlRequest}
-            pendingRequests={isHost ? pendingRequests as PlayerPendingRequest[] : undefined}
-            onRespondRequest={respondToRequest}
-            resumeKey={`party:${room.id}`}
-            introStart={room.intro_start_time ?? 0}
-            introEnd={room.intro_end_time ?? 0}
-            requestResolutionKey={requestResolutionKey}
-            fullscreenOverlay={<RoomChat messages={messages} body={body} setBody={setBody} sendMessage={sendMessage} compact />}
-          />
+          {isBandersnatch ? (
+            <BandersnatchPlayer
+              isWatchParty
+              isHost={isHost}
+              guestId={guest?.id ?? "guest"}
+              guestName={guest?.name ?? "Guest"}
+              onSendVote={sendBandersnatchVote}
+              onSendChoice={sendBandersnatchChoice}
+              incomingVote={incomingVote}
+              incomingChoice={incomingChoice}
+              onReady={(v) => { videoRef.current = v; }}
+            />
+          ) : (
+            <VideoPlayer
+              src={room.stream_url}
+              poster={room.poster_url}
+              externalRef={videoRef}
+              locked={!isHost}
+              onRequest={(request) => sendControlRequest(request.type, request.time)}
+              onCancelRequest={cancelControlRequest}
+              pendingRequests={isHost ? pendingRequests as PlayerPendingRequest[] : undefined}
+              onRespondRequest={respondToRequest}
+              resumeKey={`party:${room.id}`}
+              introStart={room.intro_start_time ?? 0}
+              introEnd={room.intro_end_time ?? 0}
+              requestResolutionKey={requestResolutionKey}
+              fullscreenOverlay={<RoomChat messages={messages} body={body} setBody={setBody} sendMessage={sendMessage} compact />}
+            />
+          )}
         </div>
         <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-3 backdrop-blur-xl sm:mt-4 sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">

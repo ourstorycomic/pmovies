@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { MotionShell } from "@/components/motion-shell";
 import { MovieActions } from "@/components/movies/movie-actions";
 import { VideoPlayer } from "@/components/player/video-player";
+import { BandersnatchPlayer } from "@/components/player/bandersnatch-player";
 import { Button } from "@/components/ui/button";
 import { CreateWatchPartyButton } from "@/components/watch-party/create-watch-party-button";
 import { JoinWatchPartyForm } from "@/components/watch-party/join-watch-party-form";
@@ -11,6 +12,8 @@ import { fetchKkJson } from "@/lib/kkphim";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { stripHtml } from "@/lib/utils";
 import type { EpisodeLink, MovieDetail } from "@/types/movie";
+
+const BANDERSNATCH_SLUG = "guong-den-bandersnatch";
 
 export const dynamic = "force-dynamic";
 
@@ -140,11 +143,17 @@ export default async function MoviePage({ params, searchParams }: { params: Prom
       </section>
       <section id="player" className="mx-auto grid max-w-7xl gap-5 px-3 pb-20 sm:gap-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0">
-          <VideoPlayer src={activeEpisode?.link_m3u8} poster={movie.thumb_url || movie.poster_url} resumeKey={`${movie.slug}:${activeEpisode?.slug ?? activeEpisode?.name ?? "default"}`} introStart={introStart} introEnd={introEnd} />
-          {!activeEpisode && (
-            <p className="mt-3 rounded-md border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
-              This movie has episodes listed, but no playable HLS stream is available yet.
-            </p>
+          {slug === BANDERSNATCH_SLUG ? (
+            <BandersnatchPlayer />
+          ) : (
+            <>
+              <VideoPlayer src={activeEpisode?.link_m3u8} poster={movie.thumb_url || movie.poster_url} resumeKey={`${movie.slug}:${activeEpisode?.slug ?? activeEpisode?.name ?? "default"}`} introStart={introStart} introEnd={introEnd} />
+              {!activeEpisode && (
+                <p className="mt-3 rounded-md border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
+                  This movie has episodes listed, but no playable HLS stream is available yet.
+                </p>
+              )}
+            </>
           )}
         </div>
         <aside className="rounded-lg border border-white/10 bg-white/5 p-3 backdrop-blur-xl sm:p-4">

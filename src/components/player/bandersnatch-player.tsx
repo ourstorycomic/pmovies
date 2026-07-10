@@ -183,14 +183,11 @@ export function BandersnatchPlayer({
   const resolvingRef = useRef(false);
   const activeCPRef = useRef<ChoicePoint | null>(null);
   const votesRef = useRef<Record<string, number>>({});
-  const flashTimerRef = useRef<number | null>(null);
-
   // Interactive state
   const [activeCP, setActiveCP] = useState<ChoicePoint | null>(null);
   const [myVote, setMyVote] = useState<string | null>(null);
   const [votes, setVotes] = useState<Record<string, number>>({});
   const [choiceHistory, setChoiceHistory] = useState<{ id: string; choice: string }[]>([]);
-  const [lastChoiceFlash, setLastChoiceFlash] = useState<string | null>(null);
   const resolvedRef = useRef<Set<string>>(new Set());
 
   const choiceCountdown = activeCP
@@ -328,11 +325,6 @@ export function BandersnatchPlayer({
       if (h.some((entry) => entry.id === cp.id)) return h;
       return [...h, { id: cp.id, choice: chosen.text }];
     });
-
-    // Small corner toast instead of fullscreen freeze
-    setLastChoiceFlash(chosen.text);
-    if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
-    flashTimerRef.current = window.setTimeout(() => setLastChoiceFlash(null), 900);
 
     const video = videoRef.current;
     if (!video) return;
@@ -558,16 +550,6 @@ export function BandersnatchPlayer({
       {buffering && !activeCP && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
           <div className="h-12 w-12 animate-spin rounded-full border-4 border-white/20 border-t-amber-400" />
-        </div>
-      )}
-
-      {/* Choice toast — corner, non-blocking */}
-      {lastChoiceFlash && (
-        <div className="pointer-events-none absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 animate-in fade-in zoom-in-95 duration-150">
-          <div className="rounded-xl border border-amber-400/40 bg-black/75 px-5 py-2.5 text-center backdrop-blur-md shadow-lg">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-amber-400">Đã chọn</p>
-            <p className="text-base font-black text-white">{lastChoiceFlash}</p>
-          </div>
         </div>
       )}
 

@@ -30,6 +30,13 @@ function pickPagination(payload: BrowsePayload | null) {
   return payload?.pagination ?? payload?.data?.params?.pagination ?? null;
 }
 
+function pickOptions(payload: Option[] | { data?: Option[] | { items?: Option[] } } | null): Option[] {
+  if (Array.isArray(payload)) return payload;
+  if (!payload?.data) return [];
+  if (Array.isArray(payload.data)) return payload.data;
+  return payload.data.items ?? [];
+}
+
 export default async function BrowsePage({
   searchParams,
 }: {
@@ -60,8 +67,8 @@ export default async function BrowsePage({
   const pagination = pickPagination(moviesPayload);
   const currentPage = pagination?.currentPage || parseInt(params.page || "1", 10) || 1;
   const totalPages = pagination?.totalPages || 1;
-  const categories = Array.isArray(categoriesPayload) ? categoriesPayload : (categoriesPayload as any)?.data?.items ?? (categoriesPayload as any)?.data ?? [];
-  const countries = Array.isArray(countriesPayload) ? countriesPayload : (countriesPayload as any)?.data?.items ?? (countriesPayload as any)?.data ?? [];
+  const categories = pickOptions(categoriesPayload);
+  const countries = pickOptions(countriesPayload);
 
   return (
     <MotionShell>

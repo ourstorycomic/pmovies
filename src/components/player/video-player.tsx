@@ -479,12 +479,16 @@ export function VideoPlayer({
         .time { min-width: 78px; font-size: 13px; font-weight: 700; }
         .request-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; align-items: center; gap: 10px; border: 1px solid rgba(252,211,77,.28); background: rgba(0,0,0,.72); color: #fef3c7; border-radius: 10px; padding: 10px 12px; box-shadow: 0 18px 40px rgba(0,0,0,.4); backdrop-filter: blur(16px); }
         .cancel { background: rgba(244,63,94,.78); }
-        .loader { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; color: #67e8f9; animation: spin 1s linear infinite; pointer-events: none; }
+        .loader { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; color: #67e8f9; animation: spin 1s linear infinite; pointer-events: none; z-index: 10; }
         @keyframes spin { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
+        .skip-btn { position: absolute; bottom: 70px; right: 16px; background: rgba(0,0,0,0.78); border: 1px solid rgba(252,211,77,0.28); color: #fef3c7; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: bold; cursor: pointer; display: none; backdrop-filter: blur(8px); transition: background 0.2s; z-index: 50; }
+        .skip-btn:hover { background: rgba(0,0,0,0.9); border-color: rgba(252,211,77,0.5); }
       </style>
       <div class="shell">
         <div class="video-slot"></div>
         <div class="shade"></div>
+        <button class="skip-btn skip-ad">Bỏ qua quảng cáo</button>
+        <button class="skip-btn skip-intro">Skip intro</button>
         <div class="loader"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></div>
         <div class="request-card"><span class="request-text"></span><button class="cancel">×</button></div>
         <div class="controls">
@@ -559,6 +563,21 @@ export function VideoPlayer({
     const timeEl = pipWindow.document.querySelector(".time") as HTMLElement | null;
     const quality = pipWindow.document.querySelector(".quality") as HTMLSelectElement | null;
     const loader = pipWindow.document.querySelector(".loader") as HTMLElement | null;
+    const skipAdBtn = pipWindow.document.querySelector(".skip-ad") as HTMLButtonElement | null;
+    const skipIntroBtn = pipWindow.document.querySelector(".skip-intro") as HTMLButtonElement | null;
+
+    const _showSkipIntro = introEnd > introStart && currentTime >= Math.max(0, introStart - 1) && currentTime < introEnd - 4;
+    const _currentAd = (currentTime >= 900 && currentTime < 930) ? { start: 900, end: 930 } : undefined;
+
+    if (skipAdBtn) {
+      skipAdBtn.style.display = _currentAd ? "block" : "none";
+      if (!skipAdBtn.onclick) skipAdBtn.onclick = () => seekTo(_currentAd!.end + 0.5);
+    }
+    
+    if (skipIntroBtn) {
+      skipIntroBtn.style.display = _showSkipIntro && !_currentAd ? "block" : "none";
+      if (!skipIntroBtn.onclick) skipIntroBtn.onclick = () => seekTo(introEnd);
+    }
 
     if (loader) loader.style.display = (!ready || buffering) && !streamError ? "block" : "none";
     if (progressEl) progressEl.style.width = `${progressValue}%`;
@@ -665,7 +684,9 @@ export function VideoPlayer({
       onTouchStart={showControlsTemporarily}
       className={`pmovies-player group relative aspect-video overflow-hidden rounded-md bg-black shadow-2xl shadow-black/60 ${controlsVisible ? "cursor-auto" : "cursor-none"}`}
     >
-      <video ref={videoRef} poster={poster} playsInline className="h-full w-full object-contain" />
+      <div ref={videoSlotRef} className="absolute inset-0 z-0 flex items-center justify-center">
+        <video ref={videoRef} poster={poster} playsInline className="h-full w-full object-contain" />
+      </div>
       <button type="button" onClick={togglePlay} className="absolute inset-0 z-10" aria-label={locked ? "Request playback change" : "Toggle playback"} />
       {seekFlash !== null && (
         <div className="pointer-events-none absolute inset-0 z-25 flex items-center justify-center">

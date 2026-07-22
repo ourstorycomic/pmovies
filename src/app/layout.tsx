@@ -17,6 +17,17 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "PMovies - Premium Streaming",
   description: "A glassmorphic movie streaming platform powered by a secure BFF proxy.",
+  openGraph: {
+    title: "PMovies - Premium Streaming",
+    description: "A glassmorphic movie streaming platform powered by a secure BFF proxy.",
+    type: "website",
+    siteName: "PMovies",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "PMovies - Premium Streaming",
+    description: "A glassmorphic movie streaming platform powered by a secure BFF proxy.",
+  },
 };
 
 export default function RootLayout({

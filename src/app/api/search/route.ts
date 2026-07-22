@@ -1,5 +1,5 @@
-import { proxyJson } from "@/lib/kkphim";
-import { type NextRequest } from "next/server";
+import { fetchKkJson } from "@/lib/kkphim";
+import { NextResponse, type NextRequest } from "next/server";
 
 export async function GET(req: NextRequest) {
   let keyword = req.nextUrl.searchParams.get("q") ?? "";
@@ -25,5 +25,34 @@ export async function GET(req: NextRequest) {
     return Response.json({ status: "success", data: { items: [] } });
   }
 
-  return proxyJson(`/v1/api/tim-kiem?keyword=${encodeURIComponent(keyword)}&limit=5`);
+  const payload = await fetchKkJson(`/v1/api/tim-kiem?keyword=${encodeURIComponent(keyword)}&limit=120`) as any;
+  if (!payload || !payload.data) {
+     return NextResponse.json({ status: "success", data: { items: [] } });
+  }
+
+  let items = payload.data.items || [];
+  
+  // Sort items to prioritize exact matches
+  const lowerKeyword = keyword.toLowerCase();
+  items.sort((a: any, b: any) => {
+    const aName = (a.name || "").toLowerCase();
+    const bName = (b.name || "").toLowerCase();
+    
+    if (aName === lowerKeyword && bName !== lowerKeyword) return -1;
+    if (bName === lowerKeyword && aName !== lowerKeyword) return 1;
+    
+    if (aName.startsWith(lowerKeyword) && !bName.startsWith(lowerKeyword)) return -1;
+    if (bName.startsWith(lowerKeyword) && !aName.startsWith(lowerKeyword)) return 1;
+    
+    return 0;
+  });
+  
+  payload.data.items = items.slice(0, 50);
+
+  return NextResponse.json(payload, {
+    headers: {
+      "Cache-Control": "public, s-maxage=180, stale-while-revalidate=600",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 }

@@ -23,6 +23,7 @@ export type MovieDetail = MovieCard & {
   content?: string;
   status?: string;
   time?: string;
+  trailer_url?: string;
   category?: { name: string; slug: string }[];
   country?: { name: string; slug: string }[];
   tmdb?: { vote_average?: number; vote_count?: number; season?: number };

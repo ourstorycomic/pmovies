@@ -2,15 +2,18 @@ import { MotionShell } from "@/components/motion-shell";
 import { MovieActions } from "@/components/movies/movie-actions";
 import { MovieCardView } from "@/components/movies/movie-card";
 import { MovieRow } from "@/components/movies/movie-row";
+import { ContinueWatchingRow } from "@/components/movies/continue-watching-row";
 import { JoinRoomForm } from "@/components/watch-party/join-room-form";
 import { fetchKkJson } from "@/lib/kkphim";
 import { stripHtml, normalizeVietnameseSearch } from "@/lib/utils";
 import { redirect } from "next/navigation";
+import { Pagination } from "@/components/pagination";
 import type { MovieCard } from "@/types/movie";
 
 type MovieListPayload = {
   items?: MovieCard[];
-  data?: { items?: MovieCard[]; movies?: MovieCard[] };
+  data?: { items?: MovieCard[]; movies?: MovieCard[]; params?: { pagination?: { totalItems?: number; totalItemsPerPage?: number; currentPage?: number; totalPages?: number } } };
+  params?: { pagination?: { totalItems?: number; totalItemsPerPage?: number; currentPage?: number; totalPages?: number } };
 };
 
 function pickMovies(payload: MovieListPayload | null): MovieCard[] {
@@ -18,8 +21,8 @@ function pickMovies(payload: MovieListPayload | null): MovieCard[] {
   return payload.items ?? payload.data?.items ?? payload.data?.movies ?? [];
 }
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ q?: string; category?: string; country?: string }> }) {
-  const { q, category, country } = await searchParams;
+export default async function Home({ searchParams }: { searchParams: Promise<{ q?: string; category?: string; country?: string; page?: string }> }) {
+  const { q, category, country, page } = await searchParams;
   let keyword = q?.trim();
   if (keyword) {
     keyword = normalizeVietnameseSearch(keyword);
@@ -38,7 +41,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
           <section className="w-full rounded-lg border border-white/10 bg-white/5 p-8 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl">
             <p className="text-sm font-bold uppercase tracking-[.2em] text-cyan-200">Search</p>
             <h1 className="mt-3 text-4xl font-black text-white">Find a movie</h1>
-            <form action="/" className="mt-7 flex flex-col gap-3 sm:flex-row">
+            <form action="/browse" className="mt-7 flex flex-col gap-3 sm:flex-row">
               <input
                 name="q"
                 autoFocus
@@ -60,76 +63,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
   }
 
   if (keyword || category || country) {
-    const queryParts = [];
-    let overrideKeyword = keyword;
-
-    if (category === "found-footage" && !overrideKeyword) {
-      overrideKeyword = "found footage";
-    }
-
-    if (overrideKeyword) queryParts.push(`keyword=${encodeURIComponent(overrideKeyword)}`);
-    if (category && category !== "found-footage") queryParts.push(`category=${encodeURIComponent(category)}`);
-    if (country) queryParts.push(`country=${encodeURIComponent(country)}`);
-    queryParts.push(`limit=36`);
-
-    const results = pickMovies(await fetchKkJson(`/v1/api/tim-kiem?${queryParts.join("&")}`) as MovieListPayload | null);
-
-    const CATEGORIES = [
-      { slug: "", name: "Tất cả thể loại" },
-      { slug: "hanh-dong", name: "Hành Động" },
-      { slug: "kinh-di", name: "Kinh Dị" },
-      { slug: "tinh-cam", name: "Tình Cảm" },
-      { slug: "hai-huoc", name: "Hài Hước" },
-      { slug: "co-trang", name: "Cổ Trang" },
-      { slug: "tam-ly", name: "Tâm Lý" },
-      { slug: "hinh-su", name: "Hình Sự" },
-      { slug: "phieu-luu", name: "Phiêu Lưu" },
-      { slug: "vien-tuong", name: "Viễn Tưởng" },
-      { slug: "khoa-hoc", name: "Khoa Học" },
-      { slug: "found-footage", name: "Found Footage" },
-    ];
-
-    const COUNTRIES = [
-      { slug: "", name: "Tất cả quốc gia" },
-      { slug: "au-my", name: "Âu Mỹ" },
-      { slug: "han-quoc", name: "Hàn Quốc" },
-      { slug: "trung-quoc", name: "Trung Quốc" },
-      { slug: "nhat-ban", name: "Nhật Bản" },
-      { slug: "thai-lan", name: "Thái Lan" },
-      { slug: "viet-nam", name: "Việt Nam" },
-    ];
-
-    return (
-      <MotionShell>
-        <main className="mx-auto min-h-screen max-w-7xl px-4 pb-20 pt-28 sm:px-8">
-          <div className="mb-8 rounded-lg border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-            <p className="text-sm font-bold uppercase tracking-[.2em] text-cyan-200">Search</p>
-            <h1 className="mt-2 text-4xl font-black text-white">Results {keyword ? `for ${keyword}` : ''}</h1>
-            
-            <form action="/" className="mt-5 flex flex-wrap gap-3">
-              <input type="hidden" name="q" value={keyword || ""} />
-              <select name="category" defaultValue={category || ""} className="h-10 rounded-md border border-white/10 bg-black/50 px-3 text-sm text-white outline-none focus:border-cyan-300">
-                {CATEGORIES.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
-              </select>
-              <select name="country" defaultValue={country || ""} className="h-10 rounded-md border border-white/10 bg-black/50 px-3 text-sm text-white outline-none focus:border-cyan-300">
-                {COUNTRIES.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
-              </select>
-              <button className="h-10 rounded-md bg-cyan-300 px-5 text-sm font-bold text-slate-950">Filter</button>
-            </form>
-
-            <p className="mt-4 text-slate-300">{results.length} movies found</p>
-            <div className="mt-6 flex flex-col gap-3 border-t border-white/10 pt-6 sm:flex-row sm:items-center">
-
-              <span className="text-sm font-bold uppercase tracking-[.2em] text-cyan-200">Watch Party</span>
-              <div className="flex-1 max-w-sm"><JoinRoomForm /></div>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-4">
-            {results.map((movie) => <MovieCardView key={movie.slug} movie={movie} />)}
-          </div>
-        </main>
-      </MotionShell>
-    );
+    const params = new URLSearchParams();
+    if (keyword) params.set("q", keyword);
+    if (category) params.set("category", category);
+    if (country) params.set("country", country);
+    redirect(`/browse?${params.toString()}`);
   }
 
   const [latest, action, shows, anime] = await Promise.all([
@@ -161,6 +99,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
         </section>
       )}
       <div className="-mt-8 pb-16">
+        <ContinueWatchingRow />
         <MovieRow title="Latest Releases" movies={latestMovies} seeMoreHref="/browse?type=phim-moi-cap-nhat" />
         <MovieRow title="Action & Feature Films" movies={actionMovies} seeMoreHref="/browse?type=phim-le" />
         <MovieRow title="TV Shows" movies={pickMovies(shows as MovieListPayload | null)} seeMoreHref="/browse?type=tv-shows" />

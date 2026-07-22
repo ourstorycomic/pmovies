@@ -12,6 +12,7 @@ export function SearchBox() {
   const initialQuery = searchParams.get("q") ?? "";
   const [query, setQuery] = useState(initialQuery);
   const [suggestions, setSuggestions] = useState<MovieCard[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const containerRef = useRef<HTMLFormElement>(null);
@@ -44,7 +45,8 @@ export function SearchBox() {
         const res = await fetch(`/api/search?q=${encodeURIComponent(value)}`);
         const json = await res.json();
         const items = json.data?.items ?? json.items ?? json.data?.movies ?? [];
-        setSuggestions(items.slice(0, 5));
+        setSuggestions(items.slice(0, 50));
+        setTotalCount(json.data?.params?.pagination?.totalItems ?? items.length);
         setShowDropdown(true);
       } catch (e) {
         console.error(e);
@@ -79,7 +81,7 @@ export function SearchBox() {
       {loading && <Loader2 size={14} className="animate-spin text-slate-400 absolute right-3 top-3" />}
       
       {showDropdown && suggestions.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-2 max-h-80 overflow-y-auto overflow-x-hidden rounded-md border border-white/10 bg-slate-950/95 shadow-xl backdrop-blur-xl">
+        <div className="custom-scrollbar absolute left-0 right-0 top-full mt-2 max-h-96 overflow-y-auto overflow-x-hidden rounded-md border border-white/10 bg-slate-950/95 shadow-xl backdrop-blur-xl">
           {suggestions.map((movie) => (
             <Link
               key={movie.slug}
@@ -94,6 +96,9 @@ export function SearchBox() {
               </div>
             </Link>
           ))}
+          <div className="bg-white/5 p-2 text-center text-xs font-semibold text-slate-400">
+            Xem toàn bộ {totalCount} kết quả
+          </div>
         </div>
       )}
     </form>

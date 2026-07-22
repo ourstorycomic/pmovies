@@ -1,9 +1,10 @@
 "use client";
 
 import Hls from "hls.js";
-import { Check, Flag, Loader2, Maximize, Minimize, Pause, PictureInPicture2, Play, Settings2, Volume2, VolumeX, X } from "lucide-react";
+import { Check, Flag, Loader2, Maximize, Minimize, Pause, PictureInPicture2, Play, Settings2, Volume2, VolumeX, X, LightbulbOff, Lightbulb } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 
 type PlayerRequest = {
   type: "seek" | "pause" | "play";
@@ -59,10 +60,13 @@ export function VideoPlayer({
   pendingRequests,
   onRespondRequest,
   resumeKey,
+  resumeMetadata,
   introStart = 0,
   introEnd = 0,
+  outroStart = 0,
   requestResolutionKey,
   fullscreenOverlay,
+  nextEpisodeUrl,
 }: {
   src?: string;
   poster?: string;
@@ -73,10 +77,13 @@ export function VideoPlayer({
   pendingRequests?: PlayerPendingRequest[];
   onRespondRequest?: (requestId: string, accepted: boolean) => void;
   resumeKey?: string;
+  resumeMetadata?: any;
   introStart?: number;
   introEnd?: number;
+  outroStart?: number;
   requestResolutionKey?: string;
   fullscreenOverlay?: ReactNode;
+  nextEpisodeUrl?: string;
 }) {
   const ownRef = useRef<HTMLVideoElement | null>(null);
   const videoRef = externalRef ?? ownRef;
@@ -111,7 +118,8 @@ export function VideoPlayer({
   const seekFlashTimerRef = useRef<number | null>(null);
   
   const [isAutoSkipEnabled, setIsAutoSkipEnabled] = useState(false);
-  const [adStartTimeMin, setAdStartTimeMin] = useState(15);
+  const [detectedAds, setDetectedAds] = useState<{ start: number, end: number }[]>([]);
+  const [theaterMode, setTheaterMode] = useState(false);
 
   const hideTimerRef = useRef<number | null>(null);
   const lastLockedStateRef = useRef({ time: 0, paused: true });
@@ -138,6 +146,37 @@ export function VideoPlayer({
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setLevels(hls!.levels.map((item, index) => ({ height: item.height, index })).filter((item) => item.height));
       });
+      
+      const updateDetectedAds = () => {
+        if (!hls) return;
+        const details = hls.levels?.[hls.currentLevel]?.details;
+        if (!details) return;
+        const fragments = details.fragments;
+        if (!fragments || fragments.length === 0) return;
+        
+        let blocks = [];
+        let currentBlock = { start: fragments[0].start, duration: 0 };
+        let lastCC = fragments[0].cc;
+        
+        for (const frag of fragments) {
+          if (frag.cc !== lastCC) {
+            currentBlock.duration = frag.start - currentBlock.start;
+            blocks.push({ start: currentBlock.start, end: frag.start, duration: currentBlock.duration });
+            currentBlock = { start: frag.start, duration: 0 };
+            lastCC = frag.cc;
+          }
+        }
+        
+        // Filter out blocks that look like inserted ads (duration 10s-90s, not at the very beginning)
+        const ads = blocks.filter(b => b.duration >= 10 && b.duration <= 90 && b.start > 120);
+        if (ads.length > 0) {
+          setDetectedAds(ads.map(a => ({ start: a.start, end: a.end })));
+        }
+      };
+
+      hls.on(Hls.Events.LEVEL_LOADED, updateDetectedAds);
+      hls.on(Hls.Events.FRAG_CHANGED, updateDetectedAds);
+
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
           switch (data.type) {
@@ -253,6 +292,7 @@ export function VideoPlayer({
           time: video.currentTime,
           duration: video.duration || 0,
           updated_at: Date.now(),
+          meta: resumeMetadata,
         }));
         touchResumeIndex();
       }
@@ -426,6 +466,10 @@ export function VideoPlayer({
     }
   }
 
+  async function toggleTheaterMode() {
+    setTheaterMode(t => !t);
+  }
+
   async function togglePictureInPicture() {
     const video = videoRef.current as PictureInPictureVideo | null;
     const pipDocument = document as PictureInPictureDocument;
@@ -568,8 +612,7 @@ export function VideoPlayer({
     const skipIntroBtn = pipWindow.document.querySelector(".skip-intro") as HTMLButtonElement | null;
 
     const _showSkipIntro = introEnd > introStart && currentTime >= Math.max(0, introStart - 1) && currentTime < introEnd - 4;
-    const adStartSec = adStartTimeMin * 60;
-    const _currentAd = (currentTime >= adStartSec && currentTime < adStartSec + 30) ? { start: adStartSec, end: adStartSec + 30 } : undefined;
+    const _currentAd = detectedAds.find(ad => currentTime >= ad.start && currentTime < ad.end);
     const _isAdWindow = currentTime >= 840 && currentTime <= 1080;
 
     if (skipAdBtn) {
@@ -669,9 +712,16 @@ export function VideoPlayer({
   const requestProgress = shownRequest?.type === "seek" && duration ? ((shownRequest.time ?? 0) / duration) * 100 : null;
   const showSkipIntro = introEnd > introStart && currentTime >= Math.max(0, introStart - 1) && currentTime < introEnd - 4;
   
-  const adStartSec = adStartTimeMin * 60;
-  const currentAd = (currentTime >= adStartSec && currentTime < adStartSec + 30) ? { start: adStartSec, end: adStartSec + 30 } : undefined;
-  const isAdWindow = currentTime >= 840 && currentTime <= 1080;
+  // Show Next Episode if current time is past outroStart (if available), OR in the last 90 seconds.
+  const isOutro = outroStart && outroStart > 0 ? currentTime >= Math.max(0, outroStart - 1) : duration > 300 && currentTime >= duration - 90;
+  const showNextEpisode = !!nextEpisodeUrl && isOutro;
+  
+  // Use detected ads if available, otherwise use fallback
+  const adStartSec = 15 * 60;
+  const activeAds = detectedAds.length > 0 ? detectedAds : [{ start: adStartSec, end: adStartSec + 30 }];
+  
+  const currentAd = activeAds.find(ad => currentTime >= ad.start && currentTime < ad.end);
+  const isSkipVisible = !!currentAd || (currentTime >= introStart && currentTime < introEnd);
 
   useEffect(() => {
     if (!isAutoSkipEnabled || !currentAd || locked) return;
@@ -683,13 +733,20 @@ export function VideoPlayer({
   }, [currentAd, isAutoSkipEnabled, locked]);
 
   return (
-    <div
-      ref={containerRef}
-      onMouseMove={showControlsTemporarily}
-      onMouseEnter={showControlsTemporarily}
-      onTouchStart={showControlsTemporarily}
-      className={`pmovies-player group relative aspect-video overflow-hidden rounded-md bg-black shadow-2xl shadow-black/60 ${controlsVisible ? "cursor-auto" : "cursor-none"}`}
-    >
+    <>
+      {theaterMode && (
+        <div 
+          className="fixed inset-0 z-40 bg-black/95 transition-opacity" 
+          onClick={() => setTheaterMode(false)}
+        />
+      )}
+      <div
+        ref={containerRef}
+        onMouseMove={showControlsTemporarily}
+        onMouseEnter={showControlsTemporarily}
+        onTouchStart={showControlsTemporarily}
+        className={`pmovies-player group relative aspect-video overflow-hidden rounded-md bg-black shadow-2xl shadow-black/60 ${theaterMode ? "z-50" : ""} ${controlsVisible ? "cursor-auto" : "cursor-none"}`}
+      >
       <div ref={videoSlotRef} className="absolute inset-0 z-0 flex items-center justify-center">
         <video ref={videoRef} poster={poster} playsInline className="h-full w-full object-contain" />
       </div>
@@ -758,23 +815,23 @@ export function VideoPlayer({
             Skip intro
           </button>
         )}
-        {(currentAd || isAdWindow) && (
+        {showNextEpisode && nextEpisodeUrl && (
+          <Link
+            href={nextEpisodeUrl}
+            className="flex items-center justify-center rounded-md border border-emerald-300/30 bg-black/70 px-3 py-2 text-xs font-bold text-emerald-100 shadow-xl backdrop-blur-xl hover:bg-emerald-400 hover:text-slate-950 sm:px-4 sm:text-sm"
+          >
+            Chuyển tập tiếp theo
+          </Link>
+        )}
+        {currentAd && (
           <div className="flex flex-col items-end gap-2 animate-in fade-in slide-in-from-right-5">
             <button
               type="button"
-              onClick={() => seekTo(currentTime + 30)}
+              onClick={() => seekTo(currentAd.end)}
               className="rounded-md border border-amber-300/30 bg-black/70 px-3 py-2 text-xs font-bold text-amber-100 shadow-xl backdrop-blur-xl hover:bg-amber-400 hover:text-slate-950 sm:px-4 sm:text-sm"
             >
-              Bỏ qua QC (+30s)
+              Bỏ qua QC (+{(currentAd.end - currentAd.start).toFixed(0)}s)
             </button>
-            <div className="flex items-center gap-2 rounded-md border border-white/10 bg-black/70 px-2 py-1 text-[10px] text-white shadow-xl backdrop-blur-xl sm:px-3 sm:text-xs">
-              <span className="text-slate-300">Tự động ở phút:</span>
-              <select value={adStartTimeMin} onChange={(e) => setAdStartTimeMin(Number(e.target.value))} className="bg-transparent font-bold outline-none">
-                <option value={15}>15</option>
-                <option value={16}>16</option>
-                <option value={17}>17</option>
-              </select>
-            </div>
           </div>
         )}
       </div>
@@ -805,6 +862,9 @@ export function VideoPlayer({
               </div>
             )}
             <div className="h-full rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,.65)]" style={{ width: `${progress}%` }} />
+            {activeAds.map((ad, i) => (
+              <div key={`ad-${i}`} className="absolute bottom-0 top-0 bg-yellow-400/50 pointer-events-none" style={{ left: `${(ad.start / duration) * 100}%`, width: `${((ad.end - ad.start) / duration) * 100}%` }} />
+            ))}
             {(pendingRequests || []).filter(r => r.type === "seek").map((req) => {
               const reqProgress = duration ? ((req.time ?? 0) / duration) * 100 : 0;
               return (
@@ -823,6 +883,7 @@ export function VideoPlayer({
               <div className="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-amber-300 shadow-[0_0_16px_rgba(252,211,77,.85)]" style={{ left: `${duration ? ((localRequest.time ?? 0) / duration) * 100 : 0}%` }}>
                 <div className="absolute bottom-5 left-1/2 w-44 -translate-x-1/2 rounded-md border border-amber-300/25 bg-black/75 p-2 text-xs text-amber-50 shadow-xl backdrop-blur-xl sm:w-52">
                   <p className="font-bold">You requested {formatTime(localRequest.time ?? 0)}</p>
+
                   <button onClick={cancelLocalRequest} className="mt-2 rounded-md bg-white/10 p-1.5 text-white hover:bg-rose-400">
                     <X size={14} />
                   </button>
@@ -855,6 +916,7 @@ export function VideoPlayer({
             </button>
           )}
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
+
             <button 
               type="button" 
               onClick={() => setIsAutoSkipEnabled(!isAutoSkipEnabled)} 
@@ -863,12 +925,16 @@ export function VideoPlayer({
             >
               <Settings2 size={18} />
             </button>
+            <button type="button" onClick={toggleTheaterMode} className="shrink-0 rounded-md bg-white/10 p-2 hover:bg-white/20" title={theaterMode ? "Bật đèn" : "Tắt đèn"}>
+              {theaterMode ? <Lightbulb size={18} className="text-amber-200" /> : <LightbulbOff size={18} />}
+            </button>
             <button type="button" onClick={toggleFullscreen} className="shrink-0 rounded-md bg-white/10 p-2 hover:bg-white/20">
               {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
             </button>
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

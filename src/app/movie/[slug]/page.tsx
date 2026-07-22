@@ -2,6 +2,7 @@ import { Star, Clapperboard, User } from "lucide-react";
 import { notFound } from "next/navigation";
 import { MotionShell } from "@/components/motion-shell";
 import { MovieActions } from "@/components/movies/movie-actions";
+import { TrailerModalV2 } from "@/components/movies/trailer-modal-v2";
 import { VideoPlayer } from "@/components/player/video-player";
 import { BandersnatchPlayer } from "@/components/player/bandersnatch-player";
 import { Button } from "@/components/ui/button";
@@ -11,11 +12,43 @@ import { fetchIntroDbSegment } from "@/lib/introdb";
 import { fetchKkJson } from "@/lib/kkphim";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { stripHtml } from "@/lib/utils";
-import type { EpisodeLink, MovieDetail } from "@/types/movie";
+import type { EpisodeLink, MovieDetail, MovieCard } from "@/types/movie";
+import { MovieRow } from "@/components/movies/movie-row";
 
 const BANDERSNATCH_SLUG = "guong-den-bandersnatch";
 
 export const dynamic = "force-dynamic";
+
+import type { Metadata } from "next";
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const movie = await getMovie(slug);
+  
+  if (!movie) {
+    return { title: "Movie Not Found | PMovies" };
+  }
+
+  const title = `${movie.name} (${movie.year}) | PMovies`;
+  const description = stripHtml(movie.content).substring(0, 160);
+  const ogImage = movie.thumb_url || movie.poster_url || "";
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      images: [{ url: ogImage }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImage],
+    },
+  };
+}
 
 async function getMovie(slug: string): Promise<MovieDetail | null> {
   const payload = await fetchKkJson(`/phim/${encodeURIComponent(slug)}`, { cache: "no-store" }) as Record<string, unknown> | null;
@@ -95,8 +128,27 @@ export default async function MoviePage({ params, searchParams }: { params: Prom
     .eq("movie_slug", movie.slug)
     .maybeSingle();
   const introDbSegment = await fetchIntroDbSegment({ imdbId: movie.imdb?.id, season, episode: episodeNo });
-  const introStart = introDbSegment?.start ?? Number(introMarker?.start_time ?? 0);
-  const introEnd = introDbSegment?.end ?? Number(introMarker?.end_time ?? 0);
+  const introStart = introDbSegment?.intro?.start ?? Number(introMarker?.start_time ?? 0);
+  const introEnd = introDbSegment?.intro?.end ?? Number(introMarker?.end_time ?? 0);
+  const outroStart = introDbSegment?.outro?.start;
+
+  const firstCategory = movie.category?.[0]?.slug;
+  let relatedMovies: MovieCard[] = [];
+  if (firstCategory) {
+    const relatedPayload = await fetchKkJson(`/v1/api/tim-kiem?category=${firstCategory}&limit=12`) as Record<string, any> | null;
+    relatedMovies = (relatedPayload?.data?.items ?? []).filter((m: MovieCard) => m.slug !== movie.slug);
+  }
+
+  const getYoutubeId = (url: string) => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return match && match[2].length === 11 ? match[2] : null;
+  };
+  const trailerId = movie.trailer_url ? getYoutubeId(movie.trailer_url) : null;
+
+  const activeEpisodeIndex = episodes.findIndex(e => e.slug === activeEpisode?.slug && e.serverName === activeEpisode?.serverName);
+  const nextEpisode = activeEpisodeIndex >= 0 && activeEpisodeIndex < episodes.length - 1 ? episodes[activeEpisodeIndex + 1] : null;
+  const nextEpisodeUrl = nextEpisode ? `?episode=${nextEpisode.slug}&server=${nextEpisode.serverName}` : undefined;
 
   return (
     <MotionShell>
@@ -104,7 +156,7 @@ export default async function MoviePage({ params, searchParams }: { params: Prom
         <img src={movie.thumb_url || movie.poster_url} alt={movie.name} className="absolute inset-0 h-full w-full object-cover opacity-55" />
         <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-black/20" />
         <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#0a0a0a] to-transparent" />
-        <div className="relative mx-auto grid max-w-7xl gap-6 px-4 py-10 sm:px-8 sm:py-16 lg:grid-cols-[280px_1fr]">
+        <div className={`relative mx-auto grid max-w-7xl gap-6 px-4 py-10 sm:px-8 sm:py-16 ${trailerId ? "lg:grid-cols-[280px_1fr_320px] xl:grid-cols-[280px_1fr_380px]" : "lg:grid-cols-[280px_1fr]"}`}>
           <img src={movie.poster_url || movie.thumb_url} alt={movie.name} className="hidden aspect-[2/3] w-full rounded-md border border-white/10 object-cover shadow-2xl shadow-black/60 lg:block" />
           <div className="flex max-w-3xl flex-col justify-end">
             <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-slate-200 sm:gap-3 sm:text-sm">
@@ -135,10 +187,15 @@ export default async function MoviePage({ params, searchParams }: { params: Prom
                 </div>
               </div>
             )}
-            <div className="mt-7"><MovieActions movie={movie} /></div>
+            <div className="mt-7 flex flex-wrap items-center gap-3">
+              <MovieActions movie={movie} />
+            </div>
             <CreateWatchPartyButton movie={movie} streamUrl={activeEpisode?.link_m3u8} episodeName={activeEpisode?.name} introStart={introStart} introEnd={introEnd} />
             <JoinWatchPartyForm />
           </div>
+          {trailerId && (
+            <TrailerModalV2 trailerId={trailerId} />
+          )}
         </div>
       </section>
       <section id="player" className="mx-auto grid max-w-7xl gap-5 px-3 pb-20 sm:gap-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -147,7 +204,21 @@ export default async function MoviePage({ params, searchParams }: { params: Prom
             <BandersnatchPlayer />
           ) : (
             <>
-              <VideoPlayer src={activeEpisode?.link_m3u8} poster={movie.thumb_url || movie.poster_url} resumeKey={`${movie.slug}:${activeEpisode?.slug ?? activeEpisode?.name ?? "default"}`} introStart={introStart} introEnd={introEnd} />
+              <VideoPlayer 
+                src={activeEpisode?.link_m3u8} 
+                poster={movie.thumb_url || movie.poster_url} 
+                resumeKey={`${movie.slug}:${activeEpisode?.slug ?? activeEpisode?.name ?? "default"}`} 
+                resumeMetadata={{
+                  slug: movie.slug,
+                  name: movie.name,
+                  thumb_url: movie.thumb_url || movie.poster_url,
+                  episodeName: activeEpisode?.name,
+                }}
+                introStart={introStart} 
+                introEnd={introEnd} 
+                outroStart={outroStart}
+                nextEpisodeUrl={nextEpisodeUrl}
+              />
               {!activeEpisode && (
                 <p className="mt-3 rounded-md border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
                   This movie has episodes listed, but no playable HLS stream is available yet.
@@ -169,6 +240,12 @@ export default async function MoviePage({ params, searchParams }: { params: Prom
           </div>
         </aside>
       </section>
+      
+      {relatedMovies.length > 0 && (
+        <div className="mx-auto max-w-7xl px-4 pb-20 sm:px-8">
+          <MovieRow title="Có thể bạn sẽ thích" movies={relatedMovies} seeMoreHref={`/browse?category=${firstCategory}`} />
+        </div>
+      )}
     </MotionShell>
   );
 }

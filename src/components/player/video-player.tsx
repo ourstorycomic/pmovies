@@ -111,6 +111,7 @@ export function VideoPlayer({
   const seekFlashTimerRef = useRef<number | null>(null);
   
   const [isAutoSkipEnabled, setIsAutoSkipEnabled] = useState(false);
+  const [adStartTimeMin, setAdStartTimeMin] = useState(15);
 
   const hideTimerRef = useRef<number | null>(null);
   const lastLockedStateRef = useRef({ time: 0, paused: true });
@@ -567,11 +568,14 @@ export function VideoPlayer({
     const skipIntroBtn = pipWindow.document.querySelector(".skip-intro") as HTMLButtonElement | null;
 
     const _showSkipIntro = introEnd > introStart && currentTime >= Math.max(0, introStart - 1) && currentTime < introEnd - 4;
-    const _currentAd = (currentTime >= 900 && currentTime < 930) ? { start: 900, end: 930 } : undefined;
+    const adStartSec = adStartTimeMin * 60;
+    const _currentAd = (currentTime >= adStartSec && currentTime < adStartSec + 30) ? { start: adStartSec, end: adStartSec + 30 } : undefined;
+    const _isAdWindow = currentTime >= 840 && currentTime <= 1080;
 
     if (skipAdBtn) {
-      skipAdBtn.style.display = _currentAd ? "block" : "none";
-      if (!skipAdBtn.onclick) skipAdBtn.onclick = () => seekTo(_currentAd!.end + 0.5);
+      skipAdBtn.style.display = _isAdWindow || _currentAd ? "block" : "none";
+      if (!skipAdBtn.onclick) skipAdBtn.onclick = () => seekTo(currentTime + 30);
+      if (skipAdBtn.textContent === "Bỏ qua quảng cáo") skipAdBtn.textContent = "Bỏ qua QC (+30s)";
     }
     
     if (skipIntroBtn) {
@@ -665,7 +669,9 @@ export function VideoPlayer({
   const requestProgress = shownRequest?.type === "seek" && duration ? ((shownRequest.time ?? 0) / duration) * 100 : null;
   const showSkipIntro = introEnd > introStart && currentTime >= Math.max(0, introStart - 1) && currentTime < introEnd - 4;
   
-  const currentAd = (currentTime >= 900 && currentTime < 930) ? { start: 900, end: 930 } : undefined;
+  const adStartSec = adStartTimeMin * 60;
+  const currentAd = (currentTime >= adStartSec && currentTime < adStartSec + 30) ? { start: adStartSec, end: adStartSec + 30 } : undefined;
+  const isAdWindow = currentTime >= 840 && currentTime <= 1080;
 
   useEffect(() => {
     if (!isAutoSkipEnabled || !currentAd || locked) return;
@@ -752,15 +758,23 @@ export function VideoPlayer({
             Skip intro
           </button>
         )}
-        {currentAd && (
-          <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-5">
+        {(currentAd || isAdWindow) && (
+          <div className="flex flex-col items-end gap-2 animate-in fade-in slide-in-from-right-5">
             <button
               type="button"
-              onClick={() => seekTo(currentAd.end + 0.5)}
+              onClick={() => seekTo(currentTime + 30)}
               className="rounded-md border border-amber-300/30 bg-black/70 px-3 py-2 text-xs font-bold text-amber-100 shadow-xl backdrop-blur-xl hover:bg-amber-400 hover:text-slate-950 sm:px-4 sm:text-sm"
             >
-              Bỏ qua quảng cáo
+              Bỏ qua QC (+30s)
             </button>
+            <div className="flex items-center gap-2 rounded-md border border-white/10 bg-black/70 px-2 py-1 text-[10px] text-white shadow-xl backdrop-blur-xl sm:px-3 sm:text-xs">
+              <span className="text-slate-300">Tự động ở phút:</span>
+              <select value={adStartTimeMin} onChange={(e) => setAdStartTimeMin(Number(e.target.value))} className="bg-transparent font-bold outline-none">
+                <option value={15}>15</option>
+                <option value={16}>16</option>
+                <option value={17}>17</option>
+              </select>
+            </div>
           </div>
         )}
       </div>

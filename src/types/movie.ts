@@ -8,6 +8,7 @@ export type MovieCard = {
   quality?: string;
   lang?: string;
   episode_current?: string;
+  category?: { name: string; slug: string }[];
   tmdb?: { vote_average?: number; vote_count?: number; season?: number };
 };
 

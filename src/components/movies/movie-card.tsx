@@ -14,6 +14,11 @@ export function MovieCardView({ movie, href }: { movie: MovieCard; href?: string
       <Link href={href ?? `/movie/${movie.slug}`} className="block h-full">
         <img src={image} alt={movie.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-110" loading="lazy" />
       </Link>
+      {movie.category && movie.category.length > 0 && (
+        <div className="absolute left-2 top-2 rounded-md bg-cyan-500/90 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-950 shadow-md backdrop-blur-sm">
+          {movie.category[0].name}
+        </div>
+      )}
       {rating != null && rating > 0 && (
         <div className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-black/60 px-2 py-1 text-xs font-bold text-amber-300 opacity-0 backdrop-blur-sm transition group-hover:opacity-100">
           <Star size={11} fill="currentColor" className="shrink-0" />

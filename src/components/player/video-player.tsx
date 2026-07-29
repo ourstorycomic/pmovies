@@ -385,11 +385,6 @@ export function VideoPlayer({
   }
 
   function requestOrRun(request: PlayerRequest, run: () => void) {
-    if (locked) {
-      const requestId = onRequest?.(request);
-      setLocalRequest({ ...request, id: typeof requestId === "string" ? requestId : undefined });
-      return;
-    }
     run();
   }
 

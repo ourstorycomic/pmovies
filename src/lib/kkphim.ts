@@ -14,7 +14,19 @@ function internalImage(url: string, imageBase?: string) {
 
 function internalStream(url: string) {
   if (!url || url === "null" || url === "undefined" || url.includes("url=null") || url.includes("url=undefined")) return "";
-  return `/api/stream?token=${encryptStreamUrl(url)}`;
+  
+  let cleanUrl = url;
+  if (cleanUrl.includes(" ") || cleanUrl.includes("|")) {
+    const match = cleanUrl.match(/https?:\/\/[^\s\|]+\.m3u8/);
+    if (match) {
+      cleanUrl = match[0];
+    } else {
+      const fallback = cleanUrl.match(/https?:\/\/[^\s\|]+/);
+      if (fallback) cleanUrl = fallback[0];
+    }
+  }
+  
+  return `/api/stream?token=${encryptStreamUrl(cleanUrl)}`;
 }
 
 function cleanString(value: string) {

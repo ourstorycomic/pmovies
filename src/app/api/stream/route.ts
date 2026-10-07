@@ -44,13 +44,18 @@ export async function GET(request: Request) {
   }
 
   let target: URL;
+  let isTrusted = false;
   try {
-    const resolved = rawToken ? decryptStreamToken(rawToken) : decodeURIComponent(rawUrl!);
-    target = new URL(resolved);
+    if (rawToken) {
+      target = new URL(decryptStreamToken(rawToken));
+      isTrusted = true;
+    } else {
+      target = new URL(decodeURIComponent(rawUrl!));
+    }
   } catch {
     return new Response("Invalid stream URL", { status: 400 });
   }
-  if (!isAllowed(target)) return new Response("Forbidden stream host", { status: 403 });
+  if (!isTrusted && !isAllowed(target)) return new Response("Forbidden stream host", { status: 403 });
 
   let upstream = await fetch(target, { headers: streamHeaders(target) });
   if ([403, 404].includes(upstream.status)) {

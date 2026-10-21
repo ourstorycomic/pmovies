@@ -143,6 +143,22 @@ export function VideoPlayer({
   const [subBottomPercent, setSubBottomPercent] = useState<number>(8);
   const [subFontSize, setSubFontSize] = useState<number>(18);
   const [subOffset, setSubOffset] = useState(0);
+  const [subToast, setSubToast] = useState<string | null>(null);
+  const subToastTimerRef = useRef<number | null>(null);
+
+  const updateSubOffset = (newOffset: number) => {
+    setSubOffset(newOffset);
+    if (resumeKey) {
+      try {
+        localStorage.setItem(`pmovies_sub_offset:${resumeKey}`, String(newOffset));
+      } catch {}
+    }
+    const formatted = newOffset > 0 ? `+${newOffset.toFixed(1)}s` : `${newOffset.toFixed(1)}s`;
+    setSubToast(`Đồng bộ phụ đề: ${formatted}`);
+    if (subToastTimerRef.current) window.clearTimeout(subToastTimerRef.current);
+    subToastTimerRef.current = window.setTimeout(() => setSubToast(null), 1800);
+  };
+
   const [cues, setCues] = useState<Array<{ start: number; end: number; text: string }>>([]);
   const [activeCueText, setActiveCueText] = useState<string>("");
   const [isDraggingSub, setIsDraggingSub] = useState(false);
@@ -269,6 +285,21 @@ export function VideoPlayer({
       // Ignore localStorage errors
     }
   }, []);
+
+  useEffect(() => {
+    if (!resumeKey) return;
+    try {
+      const savedOffset = localStorage.getItem(`pmovies_sub_offset:${resumeKey}`);
+      if (savedOffset !== null) {
+        const val = Number(savedOffset);
+        if (!isNaN(val)) setSubOffset(val);
+      } else {
+        setSubOffset(0);
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [resumeKey]);
 
   const [detectedAds, setDetectedAds] = useState<{ start: number, end: number }[]>([]);
   const [theaterMode, setTheaterMode] = useState(false);
@@ -894,8 +925,8 @@ export function VideoPlayer({
     }, 2600);
   }
 
-  const handleKeyDownRef = useRef({ togglePlay, showControlsTemporarily, seekTo, seekFlashTimerRef, setSeekFlash, duration, currentTime, videoRef });
-  handleKeyDownRef.current = { togglePlay, showControlsTemporarily, seekTo, seekFlashTimerRef, setSeekFlash, duration, currentTime, videoRef };
+  const handleKeyDownRef = useRef({ togglePlay, showControlsTemporarily, seekTo, seekFlashTimerRef, setSeekFlash, duration, currentTime, videoRef, selectedSubUrl, subOffset, updateSubOffset });
+  handleKeyDownRef.current = { togglePlay, showControlsTemporarily, seekTo, seekFlashTimerRef, setSeekFlash, duration, currentTime, videoRef, selectedSubUrl, subOffset, updateSubOffset };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -927,6 +958,22 @@ export function VideoPlayer({
         flash(e.code === "ArrowLeft" ? "back" : "forward");
         if (flashTimer.current) window.clearTimeout(flashTimer.current);
         flashTimer.current = window.setTimeout(() => flash(null), 700);
+      }
+      if (
+        handleKeyDownRef.current.selectedSubUrl &&
+        (e.code === "BracketLeft" || e.code === "BracketRight" || e.code === "Backslash")
+      ) {
+        e.preventDefault();
+        const { subOffset: curOffset, updateSubOffset: updateOffset } = handleKeyDownRef.current;
+        if (e.code === "BracketLeft") {
+          const step = e.shiftKey ? 2.0 : 0.5;
+          updateOffset(Number((curOffset - step).toFixed(1)));
+        } else if (e.code === "BracketRight") {
+          const step = e.shiftKey ? 2.0 : 0.5;
+          updateOffset(Number((curOffset + step).toFixed(1)));
+        } else if (e.code === "Backslash") {
+          updateOffset(0);
+        }
       }
     };
     document.addEventListener("keydown", handleKeyDown);
@@ -1068,6 +1115,13 @@ export function VideoPlayer({
         <div className="pointer-events-none absolute left-3 top-3 z-40 flex items-center gap-2 rounded-lg border border-amber-400/40 bg-black/85 px-3 py-2 text-xs font-bold text-amber-200 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 sm:left-4 sm:top-4 sm:px-4 sm:py-2.5 sm:text-sm">
           <Zap size={16} className="text-amber-400 fill-amber-400 animate-pulse shrink-0" />
           <span>{skipToast}</span>
+        </div>
+      )}
+
+      {subToast && (
+        <div className={`pointer-events-none absolute z-40 flex items-center gap-2 rounded-lg border border-cyan-400/40 bg-black/85 px-3 py-2 text-xs font-bold text-cyan-200 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 sm:px-4 sm:py-2.5 sm:text-sm ${skipToast ? "left-3 top-14 sm:left-4 sm:top-16" : "left-3 top-3 sm:left-4 sm:top-4"}`}>
+          <Subtitles size={16} className="text-cyan-400 shrink-0" />
+          <span>{subToast}</span>
         </div>
       )}
 
@@ -1366,32 +1420,74 @@ export function VideoPlayer({
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-300">Lệch giờ</span>
-                        <div className="flex items-center gap-1">
+                      <div className="rounded-lg bg-white/5 p-2 border border-white/5 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-slate-300 font-medium">Lệch giờ (Sync)</span>
+                          <span className="font-mono text-cyan-300 font-bold bg-white/10 px-2 py-0.5 rounded text-[11px]">
+                            {subOffset > 0 ? `+${subOffset.toFixed(1)}s` : `${subOffset.toFixed(1)}s`}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-5 gap-1 text-[11px] font-semibold">
                           <button
                             type="button"
-                            onClick={() => setSubOffset((o) => Number((o - 0.5).toFixed(1)))}
-                            className="rounded bg-white/10 px-1.5 py-0.5 font-bold hover:bg-white/20 text-slate-300"
-                            title="Nhanh hơn 0.5s"
+                            onClick={() => updateSubOffset(Number((subOffset - 2).toFixed(1)))}
+                            className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                            title="Nhanh hơn 2 giây"
+                          >
+                            -2s
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateSubOffset(Number((subOffset - 0.5).toFixed(1)))}
+                            className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                            title="Nhanh hơn 0.5 giây"
                           >
                             -0.5s
                           </button>
                           <button
                             type="button"
-                            onClick={() => setSubOffset(0)}
-                            className="min-w-10 text-center font-mono text-cyan-300 hover:underline"
-                            title="Bấm để về 0.0s"
+                            onClick={() => updateSubOffset(0)}
+                            className="rounded bg-cyan-500/20 py-1 hover:bg-cyan-500/30 text-cyan-300 font-bold active:scale-95 transition"
+                            title="Đặt lại về 0.0s"
                           >
-                            {subOffset > 0 ? `+${subOffset.toFixed(1)}s` : `${subOffset.toFixed(1)}s`}
+                            0s
                           </button>
                           <button
                             type="button"
-                            onClick={() => setSubOffset((o) => Number((o + 0.5).toFixed(1)))}
-                            className="rounded bg-white/10 px-1.5 py-0.5 font-bold hover:bg-white/20 text-slate-300"
-                            title="Chậm hơn 0.5s"
+                            onClick={() => updateSubOffset(Number((subOffset + 0.5).toFixed(1)))}
+                            className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                            title="Chậm hơn 0.5 giây"
                           >
                             +0.5s
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateSubOffset(Number((subOffset + 2).toFixed(1)))}
+                            className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                            title="Chậm hơn 2 giây"
+                          >
+                            +2s
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
+                          <span>Phím: <kbd className="rounded bg-white/10 px-1 font-mono text-cyan-300">[</kbd> lùi / <kbd className="rounded bg-white/10 px-1 font-mono text-cyan-300">]</kbd> tiến</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (cues.length > 0) {
+                                const nearest = cues.reduce((prev, curr) => {
+                                  return Math.abs(curr.start - (currentTime - subOffset)) < Math.abs(prev.start - (currentTime - subOffset)) ? curr : prev;
+                                }, cues[0]);
+                                if (nearest) {
+                                  const newOffset = Number((currentTime - nearest.start).toFixed(1));
+                                  updateSubOffset(newOffset);
+                                }
+                              }
+                            }}
+                            className="text-cyan-400 hover:underline font-semibold flex items-center gap-0.5"
+                            title="Tự động căn chỉnh câu thoại gần nhất khớp với giây hiện tại của video"
+                          >
+                            ⚡ Khớp câu vừa nghe
                           </button>
                         </div>
                       </div>

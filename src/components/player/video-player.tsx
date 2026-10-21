@@ -1,7 +1,7 @@
 "use client";
 
 import Hls from "hls.js";
-import { Check, Flag, Loader2, Maximize, Minimize, Pause, PictureInPicture2, Play, Settings2, Volume2, VolumeX, X, LightbulbOff, Lightbulb } from "lucide-react";
+import { Check, Flag, Loader2, Maximize, Minimize, Pause, PictureInPicture2, Play, Settings2, Volume2, VolumeX, X, LightbulbOff, Lightbulb, Subtitles, Zap, RotateCcw, RotateCw, ShieldAlert, Move } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -67,6 +67,12 @@ export function VideoPlayer({
   requestResolutionKey,
   fullscreenOverlay,
   nextEpisodeUrl,
+  imdbId,
+  movieTitle,
+  year,
+  isSeries,
+  season,
+  episode,
 }: {
   src?: string;
   poster?: string;
@@ -84,6 +90,12 @@ export function VideoPlayer({
   requestResolutionKey?: string;
   fullscreenOverlay?: ReactNode;
   nextEpisodeUrl?: string;
+  imdbId?: string;
+  movieTitle?: string;
+  year?: string | number;
+  isSeries?: boolean;
+  season?: number;
+  episode?: number;
 }) {
   const ownRef = useRef<HTMLVideoElement | null>(null);
   const videoRef = externalRef ?? ownRef;
@@ -117,7 +129,146 @@ export function VideoPlayer({
   const [seekFlash, setSeekFlash] = useState<"back" | "forward" | null>(null);
   const seekFlashTimerRef = useRef<number | null>(null);
   
-  const [isAutoSkipEnabled, setIsAutoSkipEnabled] = useState(false);
+  const [isAutoSkipEnabled, setIsAutoSkipEnabled] = useState(true);
+  const [skipToast, setSkipToast] = useState<string | null>(null);
+  const skipToastTimerRef = useRef<number | null>(null);
+
+  const [availableSubs, setAvailableSubs] = useState<Array<{ id: string; lang: string; code: string; fileName: string; displayName?: string; releaseTag?: string; url: string }>>([]);
+  const [selectedSubUrl, setSelectedSubUrl] = useState<string>("");
+  const [isSubMenuOpen, setIsSubMenuOpen] = useState(false);
+  const [maskHardsub, setMaskHardsub] = useState(false);
+  const [subPosition, setSubPosition] = useState<"bottom" | "overlay" | "top">("bottom");
+  const [subXPercent, setSubXPercent] = useState<number>(50);
+  const [subBottomPercent, setSubBottomPercent] = useState<number>(8);
+  const [subFontSize, setSubFontSize] = useState<number>(18);
+  const [subOffset, setSubOffset] = useState(0);
+  const [cues, setCues] = useState<Array<{ start: number; end: number; text: string }>>([]);
+  const [activeCueText, setActiveCueText] = useState<string>("");
+  const [isDraggingSub, setIsDraggingSub] = useState(false);
+
+  const [maskAdBanner, setMaskAdBanner] = useState(false);
+  const [adBannerPos, setAdBannerPos] = useState<"top" | "bottom">("top");
+  const [adBannerHeight, setAdBannerHeight] = useState<number>(55);
+  const [adBannerBlur, setAdBannerBlur] = useState<"black" | "blur">("black");
+
+  const subWrapperRef = useRef<HTMLDivElement | null>(null);
+  const isDraggingSubRef = useRef(false);
+  const startDragXRef = useRef(0);
+  const startDragYRef = useRef(0);
+  const startXPercentRef = useRef(50);
+  const startBottomPercentRef = useRef(8);
+  const currentXPercentRef = useRef(50);
+  const currentBottomPercentRef = useRef(8);
+  const rafSubDragRef = useRef<number | null>(null);
+
+  const handleSubPointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    isDraggingSubRef.current = true;
+    setIsDraggingSub(true);
+    startDragXRef.current = e.clientX;
+    startDragYRef.current = e.clientY;
+    startXPercentRef.current = subXPercent;
+    startBottomPercentRef.current = subBottomPercent;
+    currentXPercentRef.current = subXPercent;
+    currentBottomPercentRef.current = subBottomPercent;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handleSubPointerMove = (e: React.PointerEvent) => {
+    if (!isDraggingSubRef.current || !containerRef.current) return;
+    const container = containerRef.current;
+    const containerWidth = container.clientWidth || 800;
+    const containerHeight = container.clientHeight || 500;
+
+    const deltaX = e.clientX - startDragXRef.current;
+    const deltaXPercent = (deltaX / containerWidth) * 100;
+    const nextX = Math.max(10, Math.min(90, Math.round((startXPercentRef.current + deltaXPercent) * 10) / 10));
+
+    const deltaY = startDragYRef.current - e.clientY;
+    const deltaYPercent = (deltaY / containerHeight) * 100;
+    const nextY = Math.max(2, Math.min(88, Math.round((startBottomPercentRef.current + deltaYPercent) * 10) / 10));
+
+    currentXPercentRef.current = nextX;
+    currentBottomPercentRef.current = nextY;
+
+    // Direct hardware-accelerated movement via RAF - zero React re-render lags!
+    if (rafSubDragRef.current === null) {
+      rafSubDragRef.current = requestAnimationFrame(() => {
+        if (subWrapperRef.current) {
+          subWrapperRef.current.style.left = `${currentXPercentRef.current}%`;
+          subWrapperRef.current.style.bottom = `${currentBottomPercentRef.current}%`;
+        }
+        rafSubDragRef.current = null;
+      });
+    }
+  };
+
+  const handleSubPointerUp = (e: React.PointerEvent) => {
+    if (isDraggingSubRef.current) {
+      isDraggingSubRef.current = false;
+      setIsDraggingSub(false);
+      if (rafSubDragRef.current) {
+        cancelAnimationFrame(rafSubDragRef.current);
+        rafSubDragRef.current = null;
+      }
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {}
+
+      const finalX = currentXPercentRef.current;
+      const finalY = currentBottomPercentRef.current;
+      setSubXPercent(finalX);
+      setSubBottomPercent(finalY);
+      localStorage.setItem("pmovies_sub_x_percent", String(finalX));
+      localStorage.setItem("pmovies_sub_bottom_percent", String(finalY));
+    }
+  };
+
+  useEffect(() => {
+    try {
+      const savedAutoSkip = localStorage.getItem("pmovies_auto_skip_ads");
+      if (savedAutoSkip !== null) {
+        setIsAutoSkipEnabled(savedAutoSkip === "true");
+      }
+      const savedMask = localStorage.getItem("pmovies_mask_hardsub");
+      if (savedMask !== null) {
+        setMaskHardsub(savedMask === "true");
+      }
+      const savedPos = localStorage.getItem("pmovies_sub_position");
+      if (savedPos === "bottom" || savedPos === "overlay" || savedPos === "top") {
+        setSubPosition(savedPos);
+      }
+      const savedX = localStorage.getItem("pmovies_sub_x_percent");
+      if (savedX !== null) {
+        const val = Number(savedX);
+        if (!isNaN(val) && val >= 5 && val <= 95) setSubXPercent(val);
+      }
+      const savedBottom = localStorage.getItem("pmovies_sub_bottom_percent");
+      if (savedBottom !== null) {
+        const val = Number(savedBottom);
+        if (!isNaN(val) && val >= 2 && val <= 88) setSubBottomPercent(val);
+      }
+      const savedSize = localStorage.getItem("pmovies_sub_font_size");
+      if (savedSize !== null) {
+        const val = Number(savedSize);
+        if (!isNaN(val) && val >= 12 && val <= 48) setSubFontSize(val);
+      }
+      const savedAdMask = localStorage.getItem("pmovies_mask_ad_banner");
+      if (savedAdMask !== null) setMaskAdBanner(savedAdMask === "true");
+      const savedAdPos = localStorage.getItem("pmovies_ad_banner_pos");
+      if (savedAdPos === "top" || savedAdPos === "bottom") setAdBannerPos(savedAdPos);
+      const savedAdHeight = localStorage.getItem("pmovies_ad_banner_height");
+      if (savedAdHeight !== null) {
+        const val = Number(savedAdHeight);
+        if (!isNaN(val) && val >= 30 && val <= 140) setAdBannerHeight(val);
+      }
+      const savedAdBlur = localStorage.getItem("pmovies_ad_banner_blur");
+      if (savedAdBlur === "black" || savedAdBlur === "blur") setAdBannerBlur(savedAdBlur);
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, []);
+
   const [detectedAds, setDetectedAds] = useState<{ start: number, end: number }[]>([]);
   const [theaterMode, setTheaterMode] = useState(false);
 
@@ -167,8 +318,8 @@ export function VideoPlayer({
           }
         }
         
-        // Filter out blocks that look like inserted ads (duration 10s-90s, not at the very beginning)
-        const ads = blocks.filter(b => b.duration >= 10 && b.duration <= 90 && b.start > 120);
+        // Filter out blocks that look like inserted ads (duration 5s-90s)
+        const ads = blocks.filter(b => b.duration >= 5 && b.duration <= 90);
         if (ads.length > 0) {
           setDetectedAds(ads.map(a => ({ start: a.start, end: a.end })));
         }
@@ -320,6 +471,76 @@ export function VideoPlayer({
   });
 
   useEffect(() => {
+    if (!imdbId && !movieTitle) return;
+    let isCancelled = false;
+    const params = new URLSearchParams();
+    if (imdbId && imdbId !== "null" && imdbId !== "undefined") params.set("imdbId", imdbId);
+    if (movieTitle) params.set("title", movieTitle);
+    if (year) params.set("year", String(year));
+    if (isSeries) params.set("isSeries", "true");
+    if (season) params.set("season", String(season));
+    if (episode) params.set("episode", String(episode));
+
+    fetch(`/api/subtitles?${params.toString()}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!isCancelled && data.subtitles) {
+          setAvailableSubs(data.subtitles);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [imdbId, movieTitle, year, isSeries, season, episode]);
+
+  useEffect(() => {
+    if (!selectedSubUrl) {
+      setCues([]);
+      setActiveCueText("");
+      return;
+    }
+
+    fetch(selectedSubUrl)
+      .then((res) => res.text())
+      .then((vttText) => {
+        const parsedCues: Array<{ start: number; end: number; text: string }> = [];
+        const cueRegex = /(\d{2}:\d{2}:\d{2}[\.,]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[\.,]\d{3})[^\r\n]*\r?\n([\s\S]*?)(?=\r?\n\r?\n|$)/g;
+
+        function parseSec(timeStr: string) {
+          const [hms, ms] = timeStr.replace(",", ".").split(".");
+          const [h, m, s] = hms.split(":").map(Number);
+          return h * 3600 + m * 60 + s + Number(ms || 0) / 1000;
+        }
+
+        let match;
+        while ((match = cueRegex.exec(vttText)) !== null) {
+          const start = parseSec(match[1]);
+          const end = parseSec(match[2]);
+          const rawText = match[3]
+            .replace(/<[^>]+>/g, "")
+            .trim();
+          if (rawText) {
+            parsedCues.push({ start, end, text: rawText });
+          }
+        }
+        setCues(parsedCues);
+      })
+      .catch(() => setCues([]));
+  }, [selectedSubUrl]);
+
+  useEffect(() => {
+    if (cues.length === 0) {
+      setActiveCueText("");
+      return;
+    }
+    const adjustedTime = currentTime - subOffset;
+    const current = cues.find((c) => adjustedTime >= c.start && adjustedTime <= c.end);
+    setActiveCueText(current ? current.text : "");
+  }, [currentTime, cues, subOffset]);
+
+  useEffect(() => {
     const video = videoRef.current;
     if (!video || !locked) return;
 
@@ -426,6 +647,15 @@ export function VideoPlayer({
     const percent = x / rect.width;
     setHoverPosition(percent * 100);
     setHoverTime(percent * (duration || 0));
+  }
+
+  function handleTimelineTouch(event: React.TouchEvent<HTMLDivElement>) {
+    if (!event.touches || event.touches.length === 0) return;
+    const touch = event.touches[0];
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(touch.clientX - rect.left, rect.width));
+    const percent = x / rect.width;
+    seekTo(percent * (duration || 0));
   }
 
   function changeVolume(next: number) {
@@ -711,9 +941,8 @@ export function VideoPlayer({
   const isOutro = outroStart && outroStart > 0 ? currentTime >= Math.max(0, outroStart - 1) : duration > 300 && currentTime >= duration - 90;
   const showNextEpisode = !!nextEpisodeUrl && isOutro;
   
-  // Use detected ads if available, otherwise use fallback
-  const adStartSec = 15 * 60;
-  const activeAds = detectedAds.length > 0 ? detectedAds : [{ start: adStartSec, end: adStartSec + 30 }];
+  // Use detected ads if available
+  const activeAds = detectedAds;
   
   const currentAd = activeAds.find(ad => currentTime >= ad.start && currentTime < ad.end);
   const isSkipVisible = !!currentAd || (currentTime >= introStart && currentTime < introEnd);
@@ -723,7 +952,10 @@ export function VideoPlayer({
     // Auto seek only if we are still inside the ad
     const video = videoRef.current;
     if (video && video.currentTime >= currentAd.start && video.currentTime < currentAd.end) {
-      seekTo(currentAd.end + 0.5);
+      seekTo(currentAd.end + 0.3);
+      setSkipToast(`⚡ Đã tự động bỏ qua quảng cáo (${Math.max(1, Math.round(currentAd.end - currentAd.start))}s)`);
+      if (skipToastTimerRef.current) window.clearTimeout(skipToastTimerRef.current);
+      skipToastTimerRef.current = window.setTimeout(() => setSkipToast(null), 3000);
     }
   }, [currentAd, isAutoSkipEnabled, locked]);
 
@@ -818,7 +1050,7 @@ export function VideoPlayer({
             Chuyển tập tiếp theo
           </Link>
         )}
-        {currentAd && (
+        {currentAd && !isAutoSkipEnabled && (
           <div className="flex flex-col items-end gap-2 animate-in fade-in slide-in-from-right-5">
             <button
               type="button"
@@ -830,6 +1062,103 @@ export function VideoPlayer({
           </div>
         )}
       </div>
+
+      {skipToast && (
+        <div className="pointer-events-none absolute left-3 top-3 z-40 flex items-center gap-2 rounded-lg border border-amber-400/40 bg-black/85 px-3 py-2 text-xs font-bold text-amber-200 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 sm:left-4 sm:top-4 sm:px-4 sm:py-2.5 sm:text-sm">
+          <Zap size={16} className="text-amber-400 fill-amber-400 animate-pulse shrink-0" />
+          <span>{skipToast}</span>
+        </div>
+      )}
+
+      {maskAdBanner && (
+        <div
+          style={{ height: `${adBannerHeight}px` }}
+          className={`pointer-events-none absolute inset-x-0 z-15 transition-all duration-200 ${
+            adBannerPos === "top" ? "top-0" : "bottom-0"
+          } ${
+            adBannerBlur === "blur"
+              ? "backdrop-blur-xl bg-black/65 border-y border-white/10"
+              : "bg-black/95 border-y border-white/15"
+          }`}
+        >
+          <div className="flex h-full items-center justify-center">
+            <span className="text-[10px] font-bold tracking-widest text-slate-500/50 uppercase select-none">
+              Dải che quảng cáo (Ad Shield Active)
+            </span>
+          </div>
+        </div>
+      )}
+
+      {(activeCueText || (isSubMenuOpen && selectedSubUrl)) && (
+        <div
+          ref={subWrapperRef}
+          style={{
+            left: `${subXPercent}%`,
+            bottom: `${subBottomPercent}%`,
+            transform: "translateX(-50%)",
+          }}
+          className={`pointer-events-none absolute z-25 flex justify-center w-max max-w-[94%] sm:max-w-4xl ${
+            isDraggingSub ? "transition-none pointer-events-auto" : "transition-[left,bottom] duration-150 ease-out"
+          }`}
+        >
+          <div
+            onPointerDown={handleSubPointerDown}
+            onPointerMove={handleSubPointerMove}
+            onPointerUp={handleSubPointerUp}
+            onPointerCancel={handleSubPointerUp}
+            style={{ fontSize: `${subFontSize}px`, lineHeight: 1.35 }}
+            className={`group/sub relative pointer-events-auto text-center font-medium tracking-wide select-none cursor-move touch-none active:scale-[1.02] ${
+              isDraggingSub ? "ring-2 ring-cyan-400 bg-black/95 shadow-[0_0_30px_rgba(34,211,238,0.6)]" : ""
+            } ${
+              maskHardsub
+                ? "rounded-lg bg-black/95 px-4 py-1.5 sm:px-5 sm:py-2 text-yellow-300 shadow-2xl ring-1 ring-white/10"
+                : "rounded-md px-3 py-1 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)] [text-shadow:_0_1px_4px_rgb(0_0_0_/_90%),_0_2px_8px_rgb(0_0_0_/_80%)] hover:bg-black/50 hover:ring-1 hover:ring-cyan-400/50"
+            }`}
+            title="Nhấn giữ chuột hoặc ngón tay để kéo tự do (lên/xuống/trái/phải)"
+          >
+            {(activeCueText || "Phụ đề mẫu (Nhấn giữ kéo tự do lên/xuống/trái/phải)").split("\n").map((line, idx) => (
+              <p key={idx}>{line}</p>
+            ))}
+            <div
+              className={`pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 transition rounded-full bg-cyan-400 px-2 py-0.5 text-[9px] font-bold text-slate-950 shadow flex items-center gap-1 whitespace-nowrap ${
+                isDraggingSub ? "opacity-100 scale-105" : "opacity-0 group-hover/sub:opacity-100"
+              }`}
+            >
+              <Move size={10} /> X: {Math.round(subXPercent)}% | Y: {Math.round(subBottomPercent)}%
+            </div>
+          </div>
+        </div>
+      )}
+
+      {controlsVisible && (
+        <div className="pointer-events-none absolute inset-0 z-25 flex items-center justify-center gap-6 sm:hidden">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); seekTo(Math.max(0, currentTime - 10)); }}
+            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-md active:scale-90 transition"
+            aria-label="Tua lại 10 giây"
+          >
+            <RotateCcw size={20} />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+            className="pointer-events-auto flex h-14 w-14 items-center justify-center rounded-full bg-cyan-400 text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.6)] active:scale-90 transition"
+            aria-label={paused ? "Phát video" : "Tạm dừng"}
+          >
+            {paused ? <Play size={26} className="ml-0.5 fill-slate-950" /> : <Pause size={26} className="fill-slate-950" />}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); seekTo(Math.min(duration || 0, currentTime + 10)); }}
+            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-md active:scale-90 transition"
+            aria-label="Tua tới 10 giây"
+          >
+            <RotateCw size={20} />
+          </button>
+        </div>
+      )}
+
       {fullscreenOverlay && (
         <>
           {isFullscreen && (
@@ -845,6 +1174,8 @@ export function VideoPlayer({
            onClick={handleTimeline} 
            onMouseMove={handleTimelineHover}
            onMouseLeave={() => setHoverTime(null)}
+           onTouchStart={handleTimelineTouch}
+           onTouchMove={handleTimelineTouch}
            className="group/timeline relative h-7 cursor-pointer py-3 sm:h-6 sm:py-2"
         >
           <div className="relative h-1.5 rounded-full bg-white/20">
@@ -895,7 +1226,19 @@ export function VideoPlayer({
           <button type="button" onClick={() => { const video = videoRef.current; if (video) video.muted = !video.muted; }} className="shrink-0 rounded-md bg-white/10 p-2 hover:bg-white/20">
             {muted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
           </button>
-          <input type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume} onChange={(event) => changeVolume(Number(event.target.value))} className="pmovies-range hidden w-20 sm:block lg:w-24" />
+          <input 
+            type="range" 
+            min={0} 
+            max={1} 
+            step={0.02} 
+            value={muted ? 0 : volume} 
+            onChange={(event) => changeVolume(Number(event.target.value))} 
+            style={{
+              ["--slider-bg" as any]: `linear-gradient(to right, #67e8f9 0%, #67e8f9 ${muted ? 0 : Math.round(volume * 100)}%, rgba(255, 255, 255, 0.2) ${muted ? 0 : Math.round(volume * 100)}%, rgba(255, 255, 255, 0.2) 100%)`
+            }}
+            className="pmovies-range hidden w-20 sm:block lg:w-24" 
+            aria-label="Âm lượng"
+          />
           {!locked && (
             <select value={speed} onChange={(event) => changeSpeed(Number(event.target.value))} className="hidden rounded-md border border-white/10 bg-black/60 px-2 py-1 text-xs sm:block sm:text-sm">
               {[0.5, 0.75, 1, 1.25, 1.5, 2].map((item) => <option key={item} value={item}>{item}x</option>)}
@@ -906,21 +1249,218 @@ export function VideoPlayer({
             {levels.map((item) => <option key={item.index} value={item.index}>{item.height}p</option>)}
           </select>
           {pictureInPictureSupported && (
-            <button type="button" onClick={togglePictureInPicture} className="shrink-0 rounded-md bg-white/10 p-2 hover:bg-white/20" title={isPictureInPicture ? "Close mini player" : "Mini player"}>
+            <button type="button" onClick={togglePictureInPicture} className="hidden sm:block shrink-0 rounded-md bg-white/10 p-2 hover:bg-white/20" title={isPictureInPicture ? "Close mini player" : "Mini player"}>
               <PictureInPicture2 size={18} className={isPictureInPicture ? "text-cyan-200" : undefined} />
             </button>
           )}
-          <div className="ml-auto flex items-center gap-2 sm:gap-3">
-
+          <div className="ml-auto flex items-center gap-1.5 sm:gap-3">
             <button 
               type="button" 
-              onClick={() => setIsAutoSkipEnabled(!isAutoSkipEnabled)} 
-              className={`shrink-0 rounded-md p-2 transition ${isAutoSkipEnabled ? "bg-rose-500/80 text-white" : "bg-white/10 hover:bg-white/20"}`}
-              title={isAutoSkipEnabled ? "Tắt tự động tua quảng cáo" : "Bật tự động tua quảng cáo"}
+              onClick={() => {
+                setIsAutoSkipEnabled((prev) => {
+                  const next = !prev;
+                  localStorage.setItem("pmovies_auto_skip_ads", String(next));
+                  return next;
+                });
+              }} 
+              className={`shrink-0 rounded-md p-2 transition ${isAutoSkipEnabled ? "bg-amber-400/20 text-amber-300 ring-1 ring-amber-400/40" : "bg-white/10 text-slate-300 hover:bg-white/20"}`}
+              title={isAutoSkipEnabled ? "Tự động tua quảng cáo: Đang BẬT" : "Tự động tua quảng cáo: Đang TẮT"}
             >
-              <Settings2 size={18} />
+              <Zap size={18} className={isAutoSkipEnabled ? "fill-amber-300" : ""} />
             </button>
-            <button type="button" onClick={toggleTheaterMode} className="shrink-0 rounded-md bg-white/10 p-2 hover:bg-white/20" title={theaterMode ? "Bật đèn" : "Tắt đèn"}>
+
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsSubMenuOpen((v) => !v)}
+                className={`shrink-0 rounded-md p-2 transition ${selectedSubUrl ? "bg-cyan-400/20 text-cyan-300 ring-1 ring-cyan-400/40" : "bg-white/10 text-white hover:bg-white/20"}`}
+                title="Cài đặt phụ đề (Subtitles)"
+              >
+                <Subtitles size={18} />
+              </button>
+
+              {isSubMenuOpen && (
+                <div 
+                  className="absolute bottom-full mb-3 right-0 z-50 w-64 sm:w-72 max-w-[calc(100vw-32px)] max-h-[320px] overflow-y-auto rounded-xl border border-white/15 bg-slate-950/95 p-3.5 text-white shadow-2xl backdrop-blur-2xl animate-in fade-in zoom-in-95 text-xs space-y-2.5 custom-scrollbar"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
+                    <span className="font-bold text-slate-200 flex items-center gap-1.5 text-xs">
+                      <Subtitles size={14} className="text-cyan-400" /> Cài đặt phụ đề
+                    </span>
+                    <button 
+                      type="button" 
+                      onClick={() => setIsSubMenuOpen(false)}
+                      className="rounded p-1 hover:bg-white/10 text-slate-400 hover:text-white"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  <div>
+                    <select 
+                      value={selectedSubUrl} 
+                      onChange={(e) => setSelectedSubUrl(e.target.value)}
+                      className="w-full rounded-md border border-white/15 bg-black/80 px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                    >
+                      <option value="">Tắt phụ đề (Off)</option>
+                      {Object.entries(
+                        availableSubs.reduce<Record<string, typeof availableSubs>>((acc, sub) => {
+                          (acc[sub.lang] = acc[sub.lang] || []).push(sub);
+                          return acc;
+                        }, {})
+                      ).map(([langName, subs]) => (
+                        <optgroup key={langName} label={langName} className="bg-slate-900 text-cyan-300 font-bold">
+                          {subs.map((sub) => (
+                            <option key={sub.id} value={sub.url} className="text-white bg-slate-950 font-normal">
+                              {sub.displayName || `${sub.lang} - ${sub.fileName}`}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedSubUrl && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-300">Cỡ chữ</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = Math.max(12, subFontSize - 2);
+                              setSubFontSize(next);
+                              localStorage.setItem("pmovies_sub_font_size", String(next));
+                            }}
+                            className="h-6 w-6 rounded bg-white/10 font-bold hover:bg-white/20 flex items-center justify-center text-slate-200 text-sm"
+                            title="Thu nhỏ"
+                          >
+                            -
+                          </button>
+                          <span className="w-10 text-center font-mono font-bold text-cyan-300">{subFontSize}px</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = Math.min(44, subFontSize + 2);
+                              setSubFontSize(next);
+                              localStorage.setItem("pmovies_sub_font_size", String(next));
+                            }}
+                            className="h-6 w-6 rounded bg-white/10 font-bold hover:bg-white/20 flex items-center justify-center text-slate-200 text-sm"
+                            title="Phóng to"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-300">Lệch giờ</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setSubOffset((o) => Number((o - 0.5).toFixed(1)))}
+                            className="rounded bg-white/10 px-1.5 py-0.5 font-bold hover:bg-white/20 text-slate-300"
+                            title="Nhanh hơn 0.5s"
+                          >
+                            -0.5s
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSubOffset(0)}
+                            className="min-w-10 text-center font-mono text-cyan-300 hover:underline"
+                            title="Bấm để về 0.0s"
+                          >
+                            {subOffset > 0 ? `+${subOffset.toFixed(1)}s` : `${subOffset.toFixed(1)}s`}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSubOffset((o) => Number((o + 0.5).toFixed(1)))}
+                            className="rounded bg-white/10 px-1.5 py-0.5 font-bold hover:bg-white/20 text-slate-300"
+                            title="Chậm hơn 0.5s"
+                          >
+                            +0.5s
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-300">Che sub cũ</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMaskHardsub((prev) => {
+                              const next = !prev;
+                              localStorage.setItem("pmovies_mask_hardsub", String(next));
+                              return next;
+                            });
+                          }}
+                          className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold transition ${
+                            maskHardsub ? "bg-amber-400 text-slate-950" : "bg-white/10 text-slate-300"
+                          }`}
+                        >
+                          {maskHardsub ? "BẬT" : "TẮT"}
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-300">Vị trí</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSubXPercent(50);
+                            setSubBottomPercent(8);
+                            localStorage.setItem("pmovies_sub_x_percent", "50");
+                            localStorage.setItem("pmovies_sub_bottom_percent", "8");
+                          }}
+                          className="rounded bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-slate-300 hover:bg-white/20 hover:text-white"
+                        >
+                          Đặt lại giữa
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="flex items-center justify-between border-t border-white/10 pt-2">
+                    <span className="text-slate-300 flex items-center gap-1">
+                      <ShieldAlert size={13} className={maskAdBanner ? "text-amber-400" : "text-slate-400"} /> Che banner QC
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {maskAdBanner && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = adBannerPos === "top" ? "bottom" : "top";
+                            setAdBannerPos(next);
+                            localStorage.setItem("pmovies_ad_banner_pos", next);
+                          }}
+                          className="text-[10px] text-cyan-300 bg-white/10 px-1.5 py-0.5 rounded font-semibold hover:bg-white/20"
+                        >
+                          {adBannerPos === "top" ? "Mép trên" : "Mép dưới"}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMaskAdBanner((prev) => {
+                            const next = !prev;
+                            localStorage.setItem("pmovies_mask_ad_banner", String(next));
+                            return next;
+                          });
+                        }}
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold transition ${
+                          maskAdBanner ? "bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20" : "bg-white/10 text-slate-300 hover:bg-white/20"
+                        }`}
+                      >
+                        {maskAdBanner ? "BẬT" : "TẮT"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button type="button" onClick={toggleTheaterMode} className="hidden sm:block shrink-0 rounded-md bg-white/10 p-2 hover:bg-white/20" title={theaterMode ? "Bật đèn" : "Tắt đèn"}>
               {theaterMode ? <Lightbulb size={18} className="text-amber-200" /> : <LightbulbOff size={18} />}
             </button>
             <button type="button" onClick={toggleFullscreen} className="shrink-0 rounded-md bg-white/10 p-2 hover:bg-white/20">

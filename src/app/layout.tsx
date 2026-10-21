@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/components/auth/auth-provider";
 import { Nav } from "@/components/nav";
+import { ExtensionHydrationFix } from "@/components/extension-hydration-fix";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -39,8 +40,10 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full bg-[#0a0a0a] text-white">
+      <body className="min-h-full bg-[#0a0a0a] text-white" suppressHydrationWarning>
+        <ExtensionHydrationFix />
         <AuthProvider>
           <Nav />
           {children}

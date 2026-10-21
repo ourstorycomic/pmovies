@@ -3,11 +3,17 @@
 import { useWatchHistory } from "@/hooks/use-watch-history";
 import Link from "next/link";
 import { Play } from "lucide-react";
+import { useState, useEffect } from "react";
 
 export function ContinueWatchingRow() {
   const history = useWatchHistory();
+  const [mounted, setMounted] = useState(false);
 
-  if (history.length === 0) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || history.length === 0) return null;
 
   return (
     <section className="mt-12 mb-8">

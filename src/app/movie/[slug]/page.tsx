@@ -218,6 +218,12 @@ export default async function MoviePage({ params, searchParams }: { params: Prom
                 introEnd={introEnd} 
                 outroStart={outroStart}
                 nextEpisodeUrl={nextEpisodeUrl}
+                imdbId={movie.imdb?.id}
+                movieTitle={movie.origin_name || movie.name}
+                year={movie.year}
+                isSeries={movie.type === "series" || (movie.episodes?.[0]?.server_data?.length ?? 0) > 1}
+                season={season}
+                episode={episodeNo}
               />
               {!activeEpisode && (
                 <p className="mt-3 rounded-md border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">

@@ -5,6 +5,7 @@ import { Check, Flag, Loader2, Maximize, Minimize, Pause, PictureInPicture2, Pla
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { cleanSubtitleMojibake } from "@/lib/subtitles";
 
 type PlayerRequest = {
   type: "seek" | "pause" | "play";
@@ -522,7 +523,7 @@ export function VideoPlayer({
             .replace(/<[^>]+>/g, "")
             .trim();
           if (rawText) {
-            parsedCues.push({ start, end, text: rawText });
+            parsedCues.push({ start, end, text: cleanSubtitleMojibake(rawText) });
           }
         }
         setCues(parsedCues);

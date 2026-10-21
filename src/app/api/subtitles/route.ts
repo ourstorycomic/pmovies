@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import { cleanSubtitleMojibake } from "@/lib/subtitles";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 3600;
 
 function srtToVtt(srt: string): string {
-  const normalized = srt.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const cleaned = cleanSubtitleMojibake(srt);
+  const normalized = cleaned.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const withDots = normalized.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2");
   return `WEBVTT\n\n${withDots}`;
 }

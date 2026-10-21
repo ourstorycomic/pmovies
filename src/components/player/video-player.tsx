@@ -1336,6 +1336,22 @@ export function VideoPlayer({
               <Zap size={18} className={isAutoSkipEnabled ? "fill-amber-300" : ""} />
             </button>
 
+            {selectedSubUrl && (
+              <button
+                type="button"
+                onClick={() => updateSubOffset(Number((subOffset === 30 ? 0 : 30).toFixed(1)))}
+                className={`shrink-0 rounded-md px-2 py-1.5 text-[11px] font-bold border transition flex items-center gap-1 ${
+                  subOffset !== 0
+                    ? "bg-amber-400/20 text-amber-300 border-amber-400/50 shadow-sm"
+                    : "bg-white/10 text-slate-300 border-white/10 hover:bg-white/20 hover:text-white"
+                }`}
+                title={subOffset !== 0 ? `Đang lệch: ${subOffset > 0 ? `+${subOffset}s` : `${subOffset}s`}. Bấm để đổi về 0s` : "Bấm 1-click để bù 30s quảng cáo chèn đầu phim"}
+              >
+                <Zap size={12} className={subOffset !== 0 ? "fill-amber-300" : ""} />
+                <span>{subOffset !== 0 ? `${subOffset > 0 ? `+${subOffset}s` : `${subOffset}s`}` : "+30s QC"}</span>
+              </button>
+            )}
+
             <div className="relative">
               <button
                 type="button"

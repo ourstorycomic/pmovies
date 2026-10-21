@@ -162,6 +162,7 @@ export function VideoPlayer({
   const [cues, setCues] = useState<Array<{ start: number; end: number; text: string }>>([]);
   const [activeCueText, setActiveCueText] = useState<string>("");
   const [isDraggingSub, setIsDraggingSub] = useState(false);
+  const [showSyncPicker, setShowSyncPicker] = useState(false);
 
   const [maskAdBanner, setMaskAdBanner] = useState(false);
   const [adBannerPos, setAdBannerPos] = useState<"top" | "bottom">("top");
@@ -1420,75 +1421,144 @@ export function VideoPlayer({
                         </div>
                       </div>
 
-                      <div className="rounded-lg bg-white/5 p-2 border border-white/5 space-y-1.5">
+                      <div className="rounded-lg bg-white/5 p-2.5 border border-white/10 space-y-2">
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-slate-300 font-medium">Lệch giờ (Sync)</span>
-                          <span className="font-mono text-cyan-300 font-bold bg-white/10 px-2 py-0.5 rounded text-[11px]">
-                            {subOffset > 0 ? `+${subOffset.toFixed(1)}s` : `${subOffset.toFixed(1)}s`}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              step="0.5"
+                              value={subOffset}
+                              onChange={(e) => updateSubOffset(Number(e.target.value) || 0)}
+                              className="w-16 rounded bg-black/80 border border-cyan-400/40 text-center font-mono text-cyan-300 font-bold px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                              title="Nhập số giây trực tiếp (ví dụ: 30 hoặc -15)"
+                            />
+                            <span className="text-slate-400 text-[10px]">giây</span>
+                          </div>
                         </div>
-                        <div className="grid grid-cols-5 gap-1 text-[11px] font-semibold">
-                          <button
-                            type="button"
-                            onClick={() => updateSubOffset(Number((subOffset - 2).toFixed(1)))}
-                            className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
-                            title="Nhanh hơn 2 giây"
-                          >
-                            -2s
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateSubOffset(Number((subOffset - 0.5).toFixed(1)))}
-                            className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
-                            title="Nhanh hơn 0.5 giây"
-                          >
-                            -0.5s
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateSubOffset(0)}
-                            className="rounded bg-cyan-500/20 py-1 hover:bg-cyan-500/30 text-cyan-300 font-bold active:scale-95 transition"
-                            title="Đặt lại về 0.0s"
-                          >
-                            0s
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateSubOffset(Number((subOffset + 0.5).toFixed(1)))}
-                            className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
-                            title="Chậm hơn 0.5 giây"
-                          >
-                            +0.5s
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateSubOffset(Number((subOffset + 2).toFixed(1)))}
-                            className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
-                            title="Chậm hơn 2 giây"
-                          >
-                            +2s
-                          </button>
+
+                        <div className="space-y-1">
+                          <div className="grid grid-cols-5 gap-1 text-[11px] font-semibold">
+                            <button
+                              type="button"
+                              onClick={() => updateSubOffset(Number((subOffset - 2).toFixed(1)))}
+                              className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                            >
+                              -2s
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateSubOffset(Number((subOffset - 0.5).toFixed(1)))}
+                              className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                            >
+                              -0.5s
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateSubOffset(0)}
+                              className="rounded bg-cyan-500/20 py-1 hover:bg-cyan-500/30 text-cyan-300 font-bold active:scale-95 transition"
+                            >
+                              0s
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateSubOffset(Number((subOffset + 0.5).toFixed(1)))}
+                              className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                            >
+                              +0.5s
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateSubOffset(Number((subOffset + 2).toFixed(1)))}
+                              className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                            >
+                              +2s
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-4 gap-1 text-[10px] font-bold text-amber-300/90">
+                            <button
+                              type="button"
+                              onClick={() => updateSubOffset(Number((subOffset - 30).toFixed(1)))}
+                              className="rounded bg-amber-400/10 py-0.5 hover:bg-amber-400/20 active:scale-95 transition"
+                              title="Tua lùi 30 giây (quảng cáo đầu phim)"
+                            >
+                              -30s
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateSubOffset(Number((subOffset - 10).toFixed(1)))}
+                              className="rounded bg-amber-400/10 py-0.5 hover:bg-amber-400/20 active:scale-95 transition"
+                            >
+                              -10s
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateSubOffset(Number((subOffset + 10).toFixed(1)))}
+                              className="rounded bg-amber-400/10 py-0.5 hover:bg-amber-400/20 active:scale-95 transition"
+                            >
+                              +10s
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateSubOffset(Number((subOffset + 30).toFixed(1)))}
+                              className="rounded bg-amber-400/10 py-0.5 hover:bg-amber-400/20 active:scale-95 transition"
+                              title="Tua tới 30 giây (quảng cáo đầu phim)"
+                            >
+                              +30s
+                            </button>
+                          </div>
                         </div>
+
+                        <div className="pt-1 border-t border-white/10">
+                          <button
+                            type="button"
+                            onClick={() => setShowSyncPicker((v) => !v)}
+                            className="w-full rounded-md bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-400/30 py-1.5 px-2 text-[11px] font-bold text-cyan-200 hover:bg-cyan-500/30 flex items-center justify-center gap-1.5 transition active:scale-98"
+                          >
+                            🎯 Tự động khớp theo câu bạn vừa nghe
+                          </button>
+
+                          {showSyncPicker && (
+                            <div className="mt-2 space-y-1 max-h-48 overflow-y-auto rounded-lg border border-white/15 bg-black/95 p-2 shadow-inner custom-scrollbar">
+                              <p className="text-[10px] text-amber-200 font-semibold pb-1 border-b border-white/10">
+                                Bấm vào câu thoại nhân vật vừa nói trên phim:
+                              </p>
+                              {(() => {
+                                const curSubTime = currentTime - subOffset;
+                                const nearby = cues
+                                  .filter((c) => Math.abs(c.start - curSubTime) <= 120)
+                                  .slice(0, 10);
+                                if (nearby.length === 0) {
+                                  return (
+                                    <p className="text-[10px] text-slate-500 italic p-1">
+                                      Không tìm thấy câu thoại gần giây này ({formatTime(currentTime)})
+                                    </p>
+                                  );
+                                }
+                                return nearby.map((c, i) => (
+                                  <button
+                                    key={i}
+                                    type="button"
+                                    onClick={() => {
+                                      const autoOffset = Number((currentTime - c.start).toFixed(1));
+                                      updateSubOffset(autoOffset);
+                                      setShowSyncPicker(false);
+                                    }}
+                                    className="w-full text-left rounded p-1.5 hover:bg-cyan-500/25 text-[11px] text-slate-200 hover:text-cyan-200 border border-transparent hover:border-cyan-400/30 transition flex flex-col gap-0.5"
+                                  >
+                                    <span className="text-[9px] text-cyan-400 font-mono font-bold">[{formatTime(c.start)}]</span>
+                                    <span className="line-clamp-2 leading-tight">{c.text}</span>
+                                  </button>
+                                ));
+                              })()}
+                            </div>
+                          )}
+                        </div>
+
                         <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
                           <span>Phím: <kbd className="rounded bg-white/10 px-1 font-mono text-cyan-300">[</kbd> lùi / <kbd className="rounded bg-white/10 px-1 font-mono text-cyan-300">]</kbd> tiến</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (cues.length > 0) {
-                                const nearest = cues.reduce((prev, curr) => {
-                                  return Math.abs(curr.start - (currentTime - subOffset)) < Math.abs(prev.start - (currentTime - subOffset)) ? curr : prev;
-                                }, cues[0]);
-                                if (nearest) {
-                                  const newOffset = Number((currentTime - nearest.start).toFixed(1));
-                                  updateSubOffset(newOffset);
-                                }
-                              }
-                            }}
-                            className="text-cyan-400 hover:underline font-semibold flex items-center gap-0.5"
-                            title="Tự động căn chỉnh câu thoại gần nhất khớp với giây hiện tại của video"
-                          >
-                            ⚡ Khớp câu vừa nghe
-                          </button>
+                          <span>(Shift + phím để nhảy 2s)</span>
                         </div>
                       </div>
 

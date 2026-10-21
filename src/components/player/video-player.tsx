@@ -350,6 +350,9 @@ export function VideoPlayer({
             lastCC = frag.cc;
           }
         }
+        const lastFrag = fragments[fragments.length - 1];
+        currentBlock.duration = (lastFrag.start + (lastFrag.duration || 0)) - currentBlock.start;
+        blocks.push({ start: currentBlock.start, end: currentBlock.start + currentBlock.duration, duration: currentBlock.duration });
         
         // Filter out blocks that look like inserted ads (duration 5s-90s)
         const ads = blocks.filter(b => b.duration >= 5 && b.duration <= 90);
@@ -568,10 +571,22 @@ export function VideoPlayer({
       setActiveCueText("");
       return;
     }
-    const adjustedTime = currentTime - subOffset;
+    // If user is currently watching inside an ad block, don't show movie dialogue
+    const inAd = detectedAds.some((ad) => currentTime >= ad.start && currentTime < ad.end);
+    if (inAd) {
+      setActiveCueText("");
+      return;
+    }
+
+    // Auto-compensate for ad blocks that played before currentTime
+    const autoAdOffset = detectedAds
+      .filter((ad) => currentTime >= ad.end)
+      .reduce((acc, ad) => acc + (ad.end - ad.start), 0);
+
+    const adjustedTime = currentTime - autoAdOffset - subOffset;
     const current = cues.find((c) => adjustedTime >= c.start && adjustedTime <= c.end);
     setActiveCueText(current ? current.text : "");
-  }, [currentTime, cues, subOffset]);
+  }, [currentTime, cues, subOffset, detectedAds]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -1336,21 +1351,39 @@ export function VideoPlayer({
               <Zap size={18} className={isAutoSkipEnabled ? "fill-amber-300" : ""} />
             </button>
 
-            {selectedSubUrl && (
-              <button
-                type="button"
-                onClick={() => updateSubOffset(Number((subOffset === 30 ? 0 : 30).toFixed(1)))}
-                className={`shrink-0 rounded-md px-2 py-1.5 text-[11px] font-bold border transition flex items-center gap-1 ${
-                  subOffset !== 0
-                    ? "bg-amber-400/20 text-amber-300 border-amber-400/50 shadow-sm"
-                    : "bg-white/10 text-slate-300 border-white/10 hover:bg-white/20 hover:text-white"
-                }`}
-                title={subOffset !== 0 ? `Đang lệch: ${subOffset > 0 ? `+${subOffset}s` : `${subOffset}s`}. Bấm để đổi về 0s` : "Bấm 1-click để bù 30s quảng cáo chèn đầu phim"}
-              >
-                <Zap size={12} className={subOffset !== 0 ? "fill-amber-300" : ""} />
-                <span>{subOffset !== 0 ? `${subOffset > 0 ? `+${subOffset}s` : `${subOffset}s`}` : "+30s QC"}</span>
-              </button>
-            )}
+            {selectedSubUrl && (() => {
+              const currentAutoAd = detectedAds
+                .filter((ad) => currentTime >= ad.end)
+                .reduce((acc, ad) => acc + (ad.end - ad.start), 0);
+              
+              if (currentAutoAd > 0 && subOffset === 0) {
+                return (
+                  <span
+                    className="shrink-0 rounded-md px-2 py-1 text-[10px] font-bold border border-emerald-400/40 bg-emerald-500/20 text-emerald-300 flex items-center gap-1 shadow-sm"
+                    title={`Hệ thống đã tự động bù ${Math.round(currentAutoAd)}s quảng cáo cho phụ đề`}
+                  >
+                    <Zap size={11} className="fill-emerald-400 text-emerald-400" />
+                    <span>Auto Sync ({Math.round(currentAutoAd)}s)</span>
+                  </span>
+                );
+              }
+
+              return (
+                <button
+                  type="button"
+                  onClick={() => updateSubOffset(Number((subOffset === 30 ? 0 : 30).toFixed(1)))}
+                  className={`shrink-0 rounded-md px-2 py-1.5 text-[11px] font-bold border transition flex items-center gap-1 ${
+                    subOffset !== 0
+                      ? "bg-amber-400/20 text-amber-300 border-amber-400/50 shadow-sm"
+                      : "bg-white/10 text-slate-300 border-white/10 hover:bg-white/20 hover:text-white"
+                  }`}
+                  title={subOffset !== 0 ? `Đang lệch: ${subOffset > 0 ? `+${subOffset}s` : `${subOffset}s`}. Bấm để đổi về 0s` : "Bấm 1-click để bù 30s quảng cáo chèn phim"}
+                >
+                  <Zap size={12} className={subOffset !== 0 ? "fill-amber-300" : ""} />
+                  <span>{subOffset !== 0 ? `${subOffset > 0 ? `+${subOffset}s` : `${subOffset}s`}` : "+30s QC"}</span>
+                </button>
+              );
+            })()}
 
             <div className="relative">
               <button
@@ -1541,7 +1574,10 @@ export function VideoPlayer({
                                 Bấm vào câu thoại nhân vật vừa nói trên phim:
                               </p>
                               {(() => {
-                                const curSubTime = currentTime - subOffset;
+                                const autoAd = detectedAds
+                                  .filter((ad) => currentTime >= ad.end)
+                                  .reduce((acc, ad) => acc + (ad.end - ad.start), 0);
+                                const curSubTime = currentTime - autoAd - subOffset;
                                 const nearby = cues
                                   .filter((c) => Math.abs(c.start - curSubTime) <= 120)
                                   .slice(0, 10);
@@ -1557,7 +1593,7 @@ export function VideoPlayer({
                                     key={i}
                                     type="button"
                                     onClick={() => {
-                                      const autoOffset = Number((currentTime - c.start).toFixed(1));
+                                      const autoOffset = Number((currentTime - autoAd - c.start).toFixed(1));
                                       updateSubOffset(autoOffset);
                                       setShowSyncPicker(false);
                                     }}

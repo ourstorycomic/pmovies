@@ -1117,9 +1117,20 @@ export function VideoPlayer({
             }`}
             title="Nhấn giữ chuột hoặc ngón tay để kéo tự do (lên/xuống/trái/phải)"
           >
-            {(activeCueText || "Phụ đề mẫu (Nhấn giữ kéo tự do lên/xuống/trái/phải)").split("\n").map((line, idx) => (
-              <p key={idx}>{line}</p>
-            ))}
+            {activeCueText ? (
+              activeCueText.split("\n").map((line, idx) => (
+                <p key={idx}>{line}</p>
+              ))
+            ) : (
+              <div className="flex flex-col items-center gap-1 py-0.5">
+                <span className="rounded bg-cyan-400 px-1.5 py-0.5 text-[10px] font-extrabold text-slate-950 uppercase tracking-wider shadow">
+                  Khung xem trước kéo thả
+                </span>
+                <p className="text-xs sm:text-sm text-yellow-300 font-semibold">
+                  (Bấm Phát video - Phụ đề sẽ tự động hiện khi có lời thoại)
+                </p>
+              </div>
+            )}
             <div
               className={`pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 transition rounded-full bg-cyan-400 px-2 py-0.5 text-[9px] font-bold text-slate-950 shadow flex items-center gap-1 whitespace-nowrap ${
                 isDraggingSub ? "opacity-100 scale-105" : "opacity-0 group-hover/sub:opacity-100"

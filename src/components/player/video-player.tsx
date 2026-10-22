@@ -130,7 +130,6 @@ export function VideoPlayer({
   const [seekFlash, setSeekFlash] = useState<"back" | "forward" | null>(null);
   const seekFlashTimerRef = useRef<number | null>(null);
   
-  const [isAutoSkipEnabled, setIsAutoSkipEnabled] = useState(true);
   const [skipToast, setSkipToast] = useState<string | null>(null);
   const skipToastTimerRef = useRef<number | null>(null);
 
@@ -278,10 +277,6 @@ export function VideoPlayer({
 
   useEffect(() => {
     try {
-      const savedAutoSkip = localStorage.getItem("pmovies_auto_skip_ads");
-      if (savedAutoSkip !== null) {
-        setIsAutoSkipEnabled(savedAutoSkip === "true");
-      }
       const savedMask = localStorage.getItem("pmovies_mask_hardsub");
       if (savedMask !== null) {
         setMaskHardsub(savedMask === "true");
@@ -1070,16 +1065,16 @@ export function VideoPlayer({
   const isSkipVisible = !!currentAd || (currentTime >= introStart && currentTime < introEnd);
 
   useEffect(() => {
-    if (!isAutoSkipEnabled || !currentAd || locked) return;
-    // Auto seek only if we are still inside the ad
+    if (!currentAd || locked) return;
+    // Auto seek immediately past the ad
     const video = videoRef.current;
     if (video && video.currentTime >= currentAd.start && video.currentTime < currentAd.end) {
       seekTo(currentAd.end + 0.3);
       setSkipToast(`⚡ Đã tự động bỏ qua quảng cáo (${Math.max(1, Math.round(currentAd.end - currentAd.start))}s)`);
       if (skipToastTimerRef.current) window.clearTimeout(skipToastTimerRef.current);
-      skipToastTimerRef.current = window.setTimeout(() => setSkipToast(null), 3000);
+      skipToastTimerRef.current = window.setTimeout(() => setSkipToast(null), 2500);
     }
-  }, [currentAd, isAutoSkipEnabled, locked]);
+  }, [currentAd, locked]);
 
   return (
     <>
@@ -1172,17 +1167,7 @@ export function VideoPlayer({
             Chuyển tập tiếp theo
           </Link>
         )}
-        {currentAd && !isAutoSkipEnabled && (
-          <div className="flex flex-col items-end gap-2 animate-in fade-in slide-in-from-right-5">
-            <button
-              type="button"
-              onClick={() => seekTo(currentAd.end)}
-              className="rounded-md border border-amber-300/30 bg-black/70 px-3 py-2 text-xs font-bold text-amber-100 shadow-xl backdrop-blur-xl hover:bg-amber-400 hover:text-slate-950 sm:px-4 sm:text-sm"
-            >
-              Bỏ qua QC (+{(currentAd.end - currentAd.start).toFixed(0)}s)
-            </button>
-          </div>
-        )}
+
       </div>
 
       {skipToast && (
@@ -1394,20 +1379,6 @@ export function VideoPlayer({
             </button>
           )}
           <div className="ml-auto flex items-center gap-1.5 sm:gap-3">
-            <button 
-              type="button" 
-              onClick={() => {
-                setIsAutoSkipEnabled((prev) => {
-                  const next = !prev;
-                  localStorage.setItem("pmovies_auto_skip_ads", String(next));
-                  return next;
-                });
-              }} 
-              className={`shrink-0 rounded-md p-2 transition ${isAutoSkipEnabled ? "bg-amber-400/20 text-amber-300 ring-1 ring-amber-400/40" : "bg-white/10 text-slate-300 hover:bg-white/20"}`}
-              title={isAutoSkipEnabled ? "Tự động tua quảng cáo: Đang BẬT" : "Tự động tua quảng cáo: Đang TẮT"}
-            >
-              <Zap size={18} className={isAutoSkipEnabled ? "fill-amber-300" : ""} />
-            </button>
 
 
 

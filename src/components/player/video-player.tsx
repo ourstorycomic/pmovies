@@ -254,6 +254,7 @@ export function VideoPlayer({
 
   const subWrapperRef = useRef<HTMLDivElement | null>(null);
   const isDraggingSubRef = useRef(false);
+  const isDraggingPipSubRef = useRef(false);
   const startDragXRef = useRef(0);
   const startDragYRef = useRef(0);
   const startXPercentRef = useRef(50);
@@ -943,16 +944,13 @@ export function VideoPlayer({
         .pip-sub-wrapper {
           position: absolute;
           left: 50%;
-          bottom: 16px;
+          bottom: 12%;
           transform: translateX(-50%);
           max-width: 90%;
-          pointer-events: none;
+          pointer-events: auto;
           z-index: 45;
           text-align: center;
-          transition: bottom .25s ease-out;
-        }
-        .shell:not(.idle) .pip-sub-wrapper {
-          bottom: 72px;
+          user-select: none;
         }
         .pip-sub-text {
           display: none;
@@ -967,6 +965,12 @@ export function VideoPlayer({
           font-weight: 600;
           white-space: pre-wrap;
           box-sizing: border-box;
+          cursor: move;
+          touch-action: none;
+        }
+        .pip-sub-text:active {
+          outline: 2px solid #22d3ee;
+          box-shadow: 0 0 20px rgba(34, 211, 238, 0.6);
         }
         .volume-group {
           display: flex;
@@ -1136,6 +1140,7 @@ export function VideoPlayer({
       video.className = "h-full w-full object-contain";
       video.removeEventListener("timeupdate", updateDocumentPictureInPictureUi);
       documentPipWindowRef.current = null;
+      isDraggingPipSubRef.current = false;
       setIsPictureInPicture(false);
       setPipContainer(null);
     };
@@ -1153,6 +1158,75 @@ export function VideoPlayer({
     const offsetPlus = pipWindow.document.querySelector(".pip-offset-plus") as HTMLButtonElement;
     const volumeSlider = pipWindow.document.querySelector(".volume-slider") as HTMLInputElement;
     const muteBtn = pipWindow.document.querySelector(".mute") as HTMLButtonElement;
+    const pipSubWrapper = pipWindow.document.querySelector(".pip-sub-wrapper") as HTMLElement;
+    const pipSubText = pipWindow.document.querySelector(".pip-sub-text") as HTMLElement;
+
+    if (pipSubWrapper) {
+      pipSubWrapper.style.left = `${subXPercent}%`;
+      pipSubWrapper.style.bottom = `${subBottomPercent}%`;
+    }
+
+    let isDraggingPipSub = false;
+    let pipStartX = 0;
+    let pipStartY = 0;
+    let pipStartLeft = subXPercent;
+    let pipStartBottom = subBottomPercent;
+    let pipCurrentLeft = subXPercent;
+    let pipCurrentBottom = subBottomPercent;
+
+    if (pipSubText && pipSubWrapper) {
+      pipSubText.onpointerdown = (e) => {
+        e.stopPropagation();
+        isDraggingPipSub = true;
+        isDraggingPipSubRef.current = true;
+        pipStartX = e.clientX;
+        pipStartY = e.clientY;
+        pipStartLeft = parseFloat(pipSubWrapper.style.left) || subXPercent;
+        pipStartBottom = parseFloat(pipSubWrapper.style.bottom) || subBottomPercent;
+        pipCurrentLeft = pipStartLeft;
+        pipCurrentBottom = pipStartBottom;
+        try {
+          pipSubText.setPointerCapture(e.pointerId);
+        } catch {}
+      };
+
+      pipSubText.onpointermove = (e) => {
+        if (!isDraggingPipSub) return;
+        e.stopPropagation();
+        const shellRect = shell.getBoundingClientRect();
+        const width = shellRect.width || 760;
+        const height = shellRect.height || 430;
+
+        const deltaX = e.clientX - pipStartX;
+        const deltaXPercent = (deltaX / width) * 100;
+        const nextX = Math.max(8, Math.min(92, Math.round((pipStartLeft + deltaXPercent) * 10) / 10));
+
+        const deltaY = pipStartY - e.clientY;
+        const deltaYPercent = (deltaY / height) * 100;
+        const nextY = Math.max(4, Math.min(88, Math.round((pipStartBottom + deltaYPercent) * 10) / 10));
+
+        pipCurrentLeft = nextX;
+        pipCurrentBottom = nextY;
+        pipSubWrapper.style.left = `${nextX}%`;
+        pipSubWrapper.style.bottom = `${nextY}%`;
+      };
+
+      const onPipSubPointerUp = (e: PointerEvent) => {
+        if (!isDraggingPipSub) return;
+        isDraggingPipSub = false;
+        isDraggingPipSubRef.current = false;
+        try {
+          pipSubText.releasePointerCapture(e.pointerId);
+        } catch {}
+        setSubXPercent(pipCurrentLeft);
+        setSubBottomPercent(pipCurrentBottom);
+        localStorage.setItem("pmovies_sub_x_percent", String(pipCurrentLeft));
+        localStorage.setItem("pmovies_sub_bottom_percent", String(pipCurrentBottom));
+      };
+
+      pipSubText.onpointerup = onPipSubPointerUp;
+      pipSubText.onpointercancel = onPipSubPointerUp;
+    }
 
     if (volumeSlider) {
       volumeSlider.value = String(video.muted ? 0 : video.volume);
@@ -1332,6 +1406,14 @@ export function VideoPlayer({
       requestText.textContent = showCard ? `You requested ${localRequest?.type}` : "";
     }
 
+    const pipSubWrapper = pipWindow.document.querySelector(".pip-sub-wrapper") as HTMLElement | null;
+    if (pipSubWrapper && !isDraggingPipSubRef.current) {
+      const targetLeft = `${subXPercent}%`;
+      const targetBottom = `${subBottomPercent}%`;
+      if (pipSubWrapper.style.left !== targetLeft) pipSubWrapper.style.left = targetLeft;
+      if (pipSubWrapper.style.bottom !== targetBottom) pipSubWrapper.style.bottom = targetBottom;
+    }
+
     const pipSubText = pipWindow.document.querySelector(".pip-sub-text") as HTMLElement | null;
     if (pipSubText) {
       const currentVideoTime = videoRef.current?.currentTime ?? currentTime;
@@ -1351,19 +1433,31 @@ export function VideoPlayer({
       }
 
       if (cueToDisplay) {
-        pipSubText.textContent = cueToDisplay;
-        pipSubText.style.display = "inline-block";
-        pipSubText.style.fontSize = `clamp(12px, ${((subFontSize / 18) * 3.8).toFixed(1)}vw, 26px)`;
-        if (maskHardsub) {
-          pipSubText.style.background = "rgba(0, 0, 0, 0.96)";
-          pipSubText.style.color = "#fde047";
-        } else {
-          pipSubText.style.background = "rgba(0, 0, 0, 0.85)";
-          pipSubText.style.color = "#ffffff";
+        if (pipSubText.textContent !== cueToDisplay) {
+          pipSubText.textContent = cueToDisplay;
+        }
+        if (pipSubText.style.display !== "inline-block") {
+          pipSubText.style.display = "inline-block";
+        }
+        const targetFontSize = `clamp(12px, ${((subFontSize / 18) * 3.8).toFixed(1)}vw, 26px)`;
+        if (pipSubText.style.fontSize !== targetFontSize) {
+          pipSubText.style.fontSize = targetFontSize;
+        }
+        const targetBg = maskHardsub ? "rgba(0, 0, 0, 0.96)" : "rgba(0, 0, 0, 0.85)";
+        if (pipSubText.style.background !== targetBg) {
+          pipSubText.style.background = targetBg;
+        }
+        const targetColor = maskHardsub ? "#fde047" : "#ffffff";
+        if (pipSubText.style.color !== targetColor) {
+          pipSubText.style.color = targetColor;
         }
       } else {
-        pipSubText.textContent = "";
-        pipSubText.style.display = "none";
+        if (pipSubText.textContent !== "") {
+          pipSubText.textContent = "";
+        }
+        if (pipSubText.style.display !== "none") {
+          pipSubText.style.display = "none";
+        }
       }
     }
 

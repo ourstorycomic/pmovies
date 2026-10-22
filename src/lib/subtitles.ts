@@ -63,3 +63,32 @@ export function cleanSubtitleMojibake(text: string): string {
     .replace(/Â¡/g, "¡")
     .replace(/Â/g, "");
 }
+
+/**
+ * Cleans and sanitizes subtitle text:
+ * - Strips SSA/ASS formatting tags like {\an8}, {\pos(x,y)}, {\c&H...}, {\fad(...)}, {\i1}, etc.
+ * - Converts SSA/ASS hard line breaks (\N, \n) into actual newlines
+ * - Strips HTML/WebVTT tags (<b>, <i>, <font...>, <c...>, <v...>)
+ * - Fixes Mojibake (double-encoded UTF-8 glitch characters)
+ * - Trims unnecessary blank lines and whitespace
+ */
+export function cleanSubtitleText(text: string): string {
+  if (!text) return "";
+
+  const mojibakeCleaned = cleanSubtitleMojibake(text);
+
+  return mojibakeCleaned
+    // Strip SSA/ASS curly-bracket tags like {\an8}, {\pos(192,200)}, {\c&H00FFFF&}, {\fad(200,200)}, etc.
+    .replace(/\{[^}]+\}/g, "")
+    // Convert SSA/ASS hard line breaks \N or \n into real newlines
+    .replace(/\\N/g, "\n")
+    .replace(/\\n/g, "\n")
+    // Strip HTML/WebVTT tags like <b>, </i>, <font color="...">, <c.yellow>, <v Narrator>
+    .replace(/<[^>]+>/g, "")
+    // Clean up empty lines and trim
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line, i, arr) => line.length > 0 || (i > 0 && arr[i - 1].length > 0))
+    .join("\n")
+    .trim();
+}

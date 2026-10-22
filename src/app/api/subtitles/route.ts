@@ -144,9 +144,17 @@ export async function GET(request: Request) {
   let rawList: RawSub[] = [];
 
   if (isSeriesExplicit) {
-    // If explicitly marked as series, try series first, fallback to movie
+    // Try series endpoint for the exact season & episode
     rawList = await fetchSubtitlesFromEndpoint(seriesEndpoint);
-    if (rawList.length === 0) {
+    // Many TV/anime series are indexed under Season 1 on OpenSubtitles/Stremio
+    if (rawList.length === 0 && season > 1) {
+      rawList = await fetchSubtitlesFromEndpoint(
+        `https://opensubtitles-v3.strem.io/subtitles/series/${cleanImdb}:1:${episode}.json`
+      );
+    }
+    // CRITICAL: NEVER fallback to movieEndpoint for episode > 1!
+    // movieEndpoint in Stremio/OpenSubtitles ALWAYS returns Episode 1 subtitles for TV series.
+    if (rawList.length === 0 && episode === 1) {
       rawList = await fetchSubtitlesFromEndpoint(movieEndpoint);
     }
   } else {
@@ -154,6 +162,11 @@ export async function GET(request: Request) {
     rawList = await fetchSubtitlesFromEndpoint(movieEndpoint);
     if (rawList.length === 0) {
       rawList = await fetchSubtitlesFromEndpoint(seriesEndpoint);
+      if (rawList.length === 0 && season > 1) {
+        rawList = await fetchSubtitlesFromEndpoint(
+          `https://opensubtitles-v3.strem.io/subtitles/series/${cleanImdb}:1:${episode}.json`
+        );
+      }
     }
   }
 

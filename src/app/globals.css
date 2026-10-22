@@ -50,6 +50,11 @@ body::before {
   width: 100%;
 }
 
+.pmovies-player.cursor-hidden,
+.pmovies-player.cursor-hidden * {
+  cursor: none !important;
+}
+
 .pmovies-range {
   height: 1.75rem;
   cursor: pointer;

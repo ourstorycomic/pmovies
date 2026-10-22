@@ -205,6 +205,7 @@ export default async function MoviePage({ params, searchParams }: { params: Prom
           ) : (
             <>
               <VideoPlayer 
+                key={activeEpisode?.key || `${movie.slug}:${activeEpisode?.slug ?? activeEpisode?.name ?? "default"}`}
                 src={activeEpisode?.link_m3u8} 
                 poster={movie.thumb_url || movie.poster_url} 
                 resumeKey={`${movie.slug}:${activeEpisode?.slug ?? activeEpisode?.name ?? "default"}`} 

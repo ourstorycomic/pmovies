@@ -5,7 +5,7 @@ import { Check, CheckCircle2, Flag, Loader2, Maximize, Minimize, Pause, PictureI
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { cleanSubtitleMojibake } from "@/lib/subtitles";
+import { cleanSubtitleMojibake, cleanSubtitleText } from "@/lib/subtitles";
 
 type PlayerRequest = {
   type: "seek" | "pause" | "play";
@@ -247,10 +247,60 @@ export function VideoPlayer({
   const [activeCueText, setActiveCueText] = useState<string>("");
   const [isDraggingSub, setIsDraggingSub] = useState(false);
 
-  const [maskAdBanner, setMaskAdBanner] = useState(false);
-  const [adBannerPos, setAdBannerPos] = useState<"top" | "bottom">("top");
-  const [adBannerHeight, setAdBannerHeight] = useState<number>(55);
-  const [adBannerBlur, setAdBannerBlur] = useState<"black" | "blur">("black");
+  const turnOffSubtitles = () => {
+    setSelectedSubUrl("");
+    setCues([]);
+    setActiveCueText("");
+    try {
+      localStorage.setItem("pmovies_preferred_sub_lang", "off");
+    } catch {}
+    setSubToast("Đã tắt phụ đề rời");
+    if (subToastTimerRef.current) window.clearTimeout(subToastTimerRef.current);
+    subToastTimerRef.current = window.setTimeout(() => setSubToast(null), 1800);
+  };
+
+  const handleSelectSubtitle = (url: string) => {
+    if (!url) {
+      turnOffSubtitles();
+      return;
+    }
+    setSelectedSubUrl(url);
+    const chosenSub = availableSubs.find((s) => s.url === url);
+    if (chosenSub) {
+      try {
+        localStorage.setItem("pmovies_preferred_sub_lang", chosenSub.code || chosenSub.lang);
+      } catch {}
+      setSubToast(`Đã chọn phụ đề: ${chosenSub.displayName || chosenSub.lang}`);
+      if (subToastTimerRef.current) window.clearTimeout(subToastTimerRef.current);
+      subToastTimerRef.current = window.setTimeout(() => setSubToast(null), 2000);
+    }
+  };
+
+  const movieSlug = resumeMetadata?.slug || (resumeKey ? resumeKey.split(":")[0] : "");
+  const [maskAdMode, setMaskAdMode] = useState<"auto" | "always" | "off">("off");
+  const [adBannerHeightPercent, setAdBannerHeightPercent] = useState<number>(14);
+  const [adShieldToast, setAdShieldToast] = useState<string | null>(null);
+  const adShieldToastTimerRef = useRef<number | null>(null);
+  const lastAutoShieldTriggerRef = useRef<number>(-1);
+
+  const toggleMovieAdShield = (forcedMode?: "auto" | "always" | "off") => {
+    const nextMode = forcedMode !== undefined ? forcedMode : (maskAdMode === "off" ? "auto" : "off");
+    setMaskAdMode(nextMode);
+    if (movieSlug) {
+      try {
+        localStorage.setItem(`pmovies_ad_shield:${movieSlug}`, nextMode);
+      } catch {}
+    }
+    setAdShieldToast(
+      nextMode === "auto"
+        ? "🛡️ Đã bật đồng bộ che QC cho phim này (Tự động sau Intro)"
+        : nextMode === "always"
+        ? "🛡️ Đã bật che QC liên tục cho phim này"
+        : "Đã tắt che QC cho phim này"
+    );
+    if (adShieldToastTimerRef.current) window.clearTimeout(adShieldToastTimerRef.current);
+    adShieldToastTimerRef.current = window.setTimeout(() => setAdShieldToast(null), 2500);
+  };
 
   const subWrapperRef = useRef<HTMLDivElement | null>(null);
   const subBadgeRef = useRef<HTMLSpanElement | null>(null);
@@ -373,21 +423,28 @@ export function VideoPlayer({
         const val = Number(savedSize);
         if (!isNaN(val) && val >= 12 && val <= 48) setSubFontSize(val > 24 ? 18 : val);
       }
-      const savedAdMask = localStorage.getItem("pmovies_mask_ad_banner");
-      if (savedAdMask !== null) setMaskAdBanner(savedAdMask === "true");
-      const savedAdPos = localStorage.getItem("pmovies_ad_banner_pos");
-      if (savedAdPos === "top" || savedAdPos === "bottom") setAdBannerPos(savedAdPos);
-      const savedAdHeight = localStorage.getItem("pmovies_ad_banner_height");
-      if (savedAdHeight !== null) {
-        const val = Number(savedAdHeight);
-        if (!isNaN(val) && val >= 30 && val <= 140) setAdBannerHeight(val);
-      }
-      const savedAdBlur = localStorage.getItem("pmovies_ad_banner_blur");
-      if (savedAdBlur === "black" || savedAdBlur === "blur") setAdBannerBlur(savedAdBlur);
     } catch {
       // Ignore localStorage errors
     }
   }, []);
+
+  // Đồng bộ cài đặt che quảng cáo theo từng bộ phim/anime
+  useEffect(() => {
+    if (!movieSlug) return;
+    try {
+      const savedForMovie = localStorage.getItem(`pmovies_ad_shield:${movieSlug}`);
+      if (savedForMovie === "auto" || savedForMovie === "true") {
+        setMaskAdMode("auto");
+      } else if (savedForMovie === "always") {
+        setMaskAdMode("always");
+      } else if (savedForMovie === "off" || savedForMovie === "false") {
+        setMaskAdMode("off");
+      } else {
+        // Phim mới chưa được bật: Mặc định là TẮT để không làm ảnh hưởng các phim sạch không có quảng cáo!
+        setMaskAdMode("off");
+      }
+    } catch {}
+  }, [movieSlug]);
 
   useEffect(() => {
     if (!resumeKey) return;
@@ -645,6 +702,12 @@ export function VideoPlayer({
   });
 
   useEffect(() => {
+    // Clear old subtitle immediately so previous episode cues never linger
+    setSelectedSubUrl("");
+    setCues([]);
+    setActiveCueText("");
+    setAvailableSubs([]);
+
     if (!imdbId && !movieTitle) return;
     let isCancelled = false;
     const params = new URLSearchParams();
@@ -659,7 +722,21 @@ export function VideoPlayer({
       .then((res) => res.json())
       .then((data) => {
         if (!isCancelled && data.subtitles) {
-          setAvailableSubs(data.subtitles);
+          const subs: Array<{ id: string; lang: string; code: string; fileName: string; displayName?: string; releaseTag?: string; url: string }> = data.subtitles;
+          setAvailableSubs(subs);
+
+          // Auto-select subtitle based on user's saved preference
+          try {
+            const preferredLang = localStorage.getItem("pmovies_preferred_sub_lang");
+            if (preferredLang && preferredLang !== "off" && subs.length > 0) {
+              const matchedSub = subs.find(
+                (s) => s.code === preferredLang || s.lang?.toLowerCase().includes(preferredLang.toLowerCase())
+              );
+              if (matchedSub) {
+                setSelectedSubUrl(matchedSub.url);
+              }
+            }
+          } catch {}
         }
       })
       .catch(() => undefined);
@@ -673,6 +750,17 @@ export function VideoPlayer({
     if (!selectedSubUrl) {
       setCues([]);
       setActiveCueText("");
+      const video = videoRef.current;
+      if (video && typeof window !== "undefined") {
+        try {
+          const track = Array.from(video.textTracks).find((t) => t.label === "pmovies-sub");
+          if (track && track.cues) {
+            for (let i = track.cues.length - 1; i >= 0; i--) {
+              track.removeCue(track.cues[i]);
+            }
+          }
+        } catch {}
+      }
       return;
     }
 
@@ -692,11 +780,9 @@ export function VideoPlayer({
         while ((match = cueRegex.exec(vttText)) !== null) {
           const start = parseSec(match[1]);
           const end = parseSec(match[2]);
-          const rawText = match[3]
-            .replace(/<[^>]+>/g, "")
-            .trim();
-          if (rawText) {
-            parsedCues.push({ start, end, text: cleanSubtitleMojibake(rawText) });
+          const cleanedText = cleanSubtitleText(match[3]);
+          if (cleanedText) {
+            parsedCues.push({ start, end, text: cleanedText });
           }
         }
         setCues(parsedCues);
@@ -1599,6 +1685,15 @@ export function VideoPlayer({
         if (flashTimer.current) window.clearTimeout(flashTimer.current);
         flashTimer.current = window.setTimeout(() => flash(null), 700);
       }
+      if (e.code === "KeyC") {
+        e.preventDefault();
+        if (handleKeyDownRef.current.selectedSubUrl) {
+          turnOffSubtitles();
+        } else {
+          setIsSubMenuOpen(true);
+        }
+        handleKeyDownRef.current.showControlsTemporarily();
+      }
       if (
         handleKeyDownRef.current.selectedSubUrl &&
         (e.code === "BracketLeft" || e.code === "BracketRight" || e.code === "Backslash")
@@ -1647,6 +1742,23 @@ export function VideoPlayer({
     }
   }, [currentAd, locked]);
 
+  // Auto Ad Shield Detection:
+  // Ads typically appear right after the intro ends (for ~18 seconds)
+  const isAfterIntroAd = introEnd > 0 && currentTime >= Math.max(0, introEnd - 0.5) && currentTime < introEnd + 18;
+  const isStartVideoAd = currentTime >= 0 && currentTime < 15;
+  const isAutoAdActive = maskAdMode === "auto" && (isAfterIntroAd || isStartVideoAd);
+  const isAdShieldActive = maskAdMode === "always" || isAutoAdActive;
+
+  useEffect(() => {
+    if (maskAdMode !== "auto") return;
+    if (isAfterIntroAd && lastAutoShieldTriggerRef.current !== Math.round(introEnd)) {
+      lastAutoShieldTriggerRef.current = Math.round(introEnd);
+      setAdShieldToast("🛡️ Đang tự động che quảng cáo sau Intro (18s)");
+      if (adShieldToastTimerRef.current) window.clearTimeout(adShieldToastTimerRef.current);
+      adShieldToastTimerRef.current = window.setTimeout(() => setAdShieldToast(null), 3000);
+    }
+  }, [maskAdMode, isAfterIntroAd, introEnd]);
+
   return (
     <>
       {theaterMode && (
@@ -1660,8 +1772,16 @@ export function VideoPlayer({
         onMouseMove={showControlsTemporarily}
         onMouseEnter={showControlsTemporarily}
         onTouchStart={showControlsTemporarily}
+        onMouseLeave={() => {
+          if (!paused && !isSubMenuOpenRef.current) {
+            if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+            hideTimerRef.current = window.setTimeout(() => {
+              setControlsVisible(false);
+            }, 800);
+          }
+        }}
         style={{ containerType: "inline-size" }}
-        className={`pmovies-player group relative aspect-video overflow-hidden rounded-md bg-black shadow-2xl shadow-black/60 ${theaterMode ? "z-50" : ""} ${controlsVisible ? "cursor-auto" : "cursor-none"}`}
+        className={`pmovies-player group relative aspect-video overflow-hidden rounded-md bg-black shadow-2xl shadow-black/60 ${theaterMode ? "z-50" : ""} ${controlsVisible ? "cursor-auto" : "cursor-hidden cursor-none [&_*]:!cursor-none"}`}
       >
       <div ref={videoSlotRef} className="absolute inset-0 z-0 flex items-center justify-center">
         <video ref={videoRef} poster={poster} playsInline className="h-full w-full object-contain" />
@@ -1725,7 +1845,14 @@ export function VideoPlayer({
         {showSkipIntro && (
           <button
             type="button"
-            onClick={() => seekTo(introEnd)}
+            onClick={() => {
+              seekTo(introEnd);
+              if (maskAdMode === "auto") {
+                setAdShieldToast("🛡️ Bỏ qua Intro & bật dải che quảng cáo (18s)");
+                if (adShieldToastTimerRef.current) window.clearTimeout(adShieldToastTimerRef.current);
+                adShieldToastTimerRef.current = window.setTimeout(() => setAdShieldToast(null), 3200);
+              }
+            }}
             className="rounded-md border border-cyan-300/30 bg-black/70 px-3 py-2 text-xs font-bold text-cyan-100 shadow-xl backdrop-blur-xl hover:bg-cyan-300 hover:text-slate-950 sm:px-4 sm:text-sm"
           >
             Skip intro
@@ -1756,22 +1883,22 @@ export function VideoPlayer({
         </div>
       )}
 
-      {maskAdBanner && (
+      {adShieldToast && (
+        <div className={`pointer-events-none absolute z-40 flex items-center gap-2 rounded-lg border border-amber-400/50 bg-black/90 px-3 py-2 text-xs font-bold text-amber-200 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 sm:px-4 sm:py-2.5 sm:text-sm ${
+          skipToast || subToast ? "left-3 top-24 sm:left-4 sm:top-28" : "left-3 top-3 sm:left-4 sm:top-4"
+        }`}>
+          <ShieldAlert size={16} className="text-amber-400 shrink-0" />
+          <span>{adShieldToast}</span>
+        </div>
+      )}
+
+      {isAdShieldActive && (
         <div
-          style={{ height: `${adBannerHeight}px` }}
-          className={`pointer-events-none absolute inset-x-0 z-15 transition-all duration-200 ${
-            adBannerPos === "top" ? "top-0" : "bottom-0"
-          } ${
-            adBannerBlur === "blur"
-              ? "backdrop-blur-xl bg-black/65 border-y border-white/10"
-              : "bg-black/95 border-y border-white/15"
-          }`}
+          style={{ height: `${adBannerHeightPercent}%` }}
+          className="pointer-events-none absolute inset-x-0 top-0 z-[28] bg-black border-b border-white/10 shadow-2xl transition-opacity duration-300 select-none"
         >
-          <div className="flex h-full items-center justify-center">
-            <span className="text-[10px] font-bold tracking-widest text-slate-500/50 uppercase select-none">
-              Dải che quảng cáo (Ad Shield Active)
-            </span>
-          </div>
+          {/* Mép chuyển màu mượt mà cinematic phía dưới */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-5 translate-y-full bg-gradient-to-b from-black/85 via-black/40 to-transparent" />
         </div>
       )}
 
@@ -1826,6 +1953,19 @@ export function VideoPlayer({
                   (Bấm Phát video - Phụ đề sẽ tự động hiện khi có lời thoại)
                 </p>
               </div>
+            )}
+            {controlsVisible && selectedSubUrl && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  turnOffSubtitles();
+                }}
+                className="pointer-events-auto absolute -top-3.5 right-0 flex items-center gap-1 rounded-full bg-black/90 border border-white/20 px-2 py-0.5 text-[10px] font-bold text-rose-300 hover:bg-rose-600 hover:text-white transition shadow-lg active:scale-95"
+                title="Bấm để tắt phụ đề rời này"
+              >
+                <X size={11} /> Tắt sub
+              </button>
             )}
             <div
               className={`pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 transition rounded-full bg-cyan-400 px-2 py-0.5 text-[9px] font-bold text-slate-950 shadow flex items-center gap-1 whitespace-nowrap ${
@@ -1959,7 +2099,43 @@ export function VideoPlayer({
               <PictureInPicture2 size={18} className={isPictureInPicture ? "text-cyan-200" : undefined} />
             </button>
           )}
-          <div className="ml-auto flex items-center gap-1.5 sm:gap-3">
+          <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+            {selectedSubUrl && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  turnOffSubtitles();
+                }}
+                className="flex items-center gap-1 rounded-md bg-rose-500/25 border border-rose-400/40 px-2 py-1.5 text-xs font-bold text-rose-200 hover:bg-rose-600 hover:text-white active:scale-95 transition"
+                title="Tắt phụ đề ngay lập tức"
+              >
+                <X size={14} className="shrink-0" />
+                <span className="hidden sm:inline">Tắt sub</span>
+              </button>
+            )}
+
+            {/* Nút bật/tắt đồng bộ che quảng cáo cho phim này */}
+            <button
+              type="button"
+              onClick={() => toggleMovieAdShield()}
+              className={`shrink-0 flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition active:scale-95 ${
+                maskAdMode !== "off"
+                  ? "bg-amber-400/25 text-amber-300 ring-1 ring-amber-400/40 shadow-sm"
+                  : "bg-white/10 text-slate-300 hover:bg-white/20 hover:text-white"
+              }`}
+              title={
+                maskAdMode !== "off"
+                  ? "Đang bật đồng bộ che QC sau Intro cho phim này (Bấm để tắt)"
+                  : "Phim này có quảng cáo? Bấm để tự động che sau Intro"
+              }
+            >
+              <ShieldAlert size={16} className={maskAdMode !== "off" ? "text-amber-400" : "text-slate-400"} />
+              <span className="hidden sm:inline">
+                {maskAdMode !== "off" ? "Che QC: BẬT" : "Che QC"}
+              </span>
+            </button>
+
             <button
               ref={subButtonRef}
               type="button"
@@ -2018,6 +2194,25 @@ export function VideoPlayer({
               </button>
             </div>
 
+            {/* Nút tắt phụ đề nhanh nếu đang bật */}
+            {selectedSubUrl && (
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-rose-950/40 border border-rose-500/35 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-rose-400 animate-pulse" />
+                  <span className="text-rose-200 font-medium">Đang bật phụ đề rời</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    turnOffSubtitles();
+                  }}
+                  className="flex items-center gap-1.5 rounded-md bg-rose-500 hover:bg-rose-600 px-3 py-1 font-bold text-white transition active:scale-95 shadow"
+                >
+                  <X size={13} /> Tắt phụ đề ngay
+                </button>
+              </div>
+            )}
+
             {availableSubs.length === 0 ? (
               <div className="rounded-xl border border-cyan-400/30 bg-cyan-950/40 p-3.5 space-y-2 text-xs">
                 <div className="flex items-center gap-2 font-bold text-cyan-300">
@@ -2035,7 +2230,7 @@ export function VideoPlayer({
               <div>
                 <select 
                   value={selectedSubUrl} 
-                  onChange={(e) => setSelectedSubUrl(e.target.value)}
+                  onChange={(e) => handleSelectSubtitle(e.target.value)}
                   className="w-full rounded-lg border border-white/15 bg-black/80 px-2.5 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-400"
                 >
                   <option value="">Tắt phụ đề (Off)</option>
@@ -2146,40 +2341,59 @@ export function VideoPlayer({
               </>
             )}
 
-            <div className="flex items-center justify-between border-t border-white/10 pt-2.5">
-              <span className="text-slate-300 flex items-center gap-1.5">
-                <ShieldAlert size={14} className={maskAdBanner ? "text-amber-400" : "text-slate-400"} /> Che banner QC
-              </span>
-              <div className="flex items-center gap-1.5">
-                {maskAdBanner && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = adBannerPos === "top" ? "bottom" : "top";
-                      setAdBannerPos(next);
-                      localStorage.setItem("pmovies_ad_banner_pos", next);
-                    }}
-                    className="text-[10px] text-cyan-300 bg-white/10 px-2 py-1 rounded-md font-semibold hover:bg-white/20 active:scale-95 transition"
-                  >
-                    {adBannerPos === "top" ? "Mép trên" : "Mép dưới"}
-                  </button>
-                )}
+            <div className="space-y-2.5 border-t border-white/10 pt-3">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-200 font-semibold flex items-center gap-1.5 text-xs">
+                  <ShieldAlert size={14} className={maskAdMode !== "off" ? "text-amber-400" : "text-slate-400"} /> Che banner QC (Ad Shield)
+                </span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  maskAdMode === "auto" 
+                    ? "bg-amber-400/20 text-amber-300 border border-amber-400/30" 
+                    : maskAdMode === "always"
+                    ? "bg-cyan-400/20 text-cyan-300 border border-cyan-400/30"
+                    : "bg-white/10 text-slate-400"
+                }`}>
+                  {maskAdMode === "auto" ? "Tự động sau Intro" : maskAdMode === "always" ? "Luôn bật" : "Đã tắt"}
+                </span>
+              </div>
+
+              {/* Chế độ chọn */}
+              <div className="grid grid-cols-3 gap-1 rounded-lg bg-black/50 p-1 border border-white/10 text-[11px] font-semibold text-center">
                 <button
                   type="button"
-                  onClick={() => {
-                    setMaskAdBanner((prev) => {
-                      const next = !prev;
-                      localStorage.setItem("pmovies_mask_ad_banner", String(next));
-                      return next;
-                    });
-                  }}
-                  className={`rounded-full px-3 py-1 text-[11px] font-bold transition active:scale-95 ${
-                    maskAdBanner ? "bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20" : "bg-white/10 text-slate-300 hover:bg-white/20"
+                  onClick={() => toggleMovieAdShield("auto")}
+                  className={`py-1.5 rounded-md transition ${
+                    maskAdMode === "auto" ? "bg-amber-400 text-slate-950 font-bold shadow" : "text-slate-300 hover:text-white"
                   }`}
+                  title="Tự động che 18s ngay sau Intro cho phim này"
                 >
-                  {maskAdBanner ? "BẬT" : "TẮT"}
+                  ⚡ Sau Intro
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleMovieAdShield("always")}
+                  className={`py-1.5 rounded-md transition ${
+                    maskAdMode === "always" ? "bg-cyan-400 text-slate-950 font-bold shadow" : "text-slate-300 hover:text-white"
+                  }`}
+                  title="Luôn giữ dải che liên tục cho phim này"
+                >
+                  Luôn bật
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleMovieAdShield("off")}
+                  className={`py-1.5 rounded-md transition ${
+                    maskAdMode === "off" ? "bg-white/20 text-white font-bold" : "text-slate-400 hover:text-white"
+                  }`}
+                  title="Tắt che quảng cáo cho phim này"
+                >
+                  Tắt
                 </button>
               </div>
+
+              <p className="text-[10px] text-slate-400 leading-relaxed italic pt-0.5">
+                💡 Cài đặt được lưu riêng cho từng phim/bộ anime. Các phim sạch không có quảng cáo sẽ không bị che.
+              </p>
             </div>
           </div>
         </>

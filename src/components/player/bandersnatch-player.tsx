@@ -839,7 +839,7 @@ export function BandersnatchPlayer({
         isFullscreen
           ? "fixed inset-0 z-[9999] flex h-screen w-screen items-center justify-center rounded-none"
           : "aspect-video rounded-xl"
-      } [&:fullscreen]:flex [&:fullscreen]:h-screen [&:fullscreen]:w-screen [&:fullscreen]:items-center [&:fullscreen]:justify-center [&:fullscreen]:rounded-none ${controlsVisible || activeCP ? "cursor-auto" : "cursor-none"}`}
+      } [&:fullscreen]:flex [&:fullscreen]:h-screen [&:fullscreen]:w-screen [&:fullscreen]:items-center [&:fullscreen]:justify-center [&:fullscreen]:rounded-none ${controlsVisible || activeCP ? "cursor-auto" : "cursor-hidden cursor-none [&_*]:!cursor-none"}`}
     >
       {/* Video */}
       <div ref={videoSlotRef} className="h-full w-full">

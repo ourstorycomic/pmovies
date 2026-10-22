@@ -348,7 +348,7 @@ export function VideoPlayer({
       const savedSize = localStorage.getItem("pmovies_sub_font_size");
       if (savedSize !== null) {
         const val = Number(savedSize);
-        if (!isNaN(val) && val >= 12 && val <= 48) setSubFontSize(val);
+        if (!isNaN(val) && val >= 12 && val <= 48) setSubFontSize(val > 24 ? 18 : val);
       }
       const savedAdMask = localStorage.getItem("pmovies_mask_ad_banner");
       if (savedAdMask !== null) setMaskAdBanner(savedAdMask === "true");
@@ -1152,6 +1152,7 @@ export function VideoPlayer({
         onMouseMove={showControlsTemporarily}
         onMouseEnter={showControlsTemporarily}
         onTouchStart={showControlsTemporarily}
+        style={{ containerType: "inline-size" }}
         className={`pmovies-player group relative aspect-video overflow-hidden rounded-md bg-black shadow-2xl shadow-black/60 ${theaterMode ? "z-50" : ""} ${controlsVisible ? "cursor-auto" : "cursor-none"}`}
       >
       <div ref={videoSlotRef} className="absolute inset-0 z-0 flex items-center justify-center">
@@ -1271,7 +1272,7 @@ export function VideoPlayer({
           ref={subWrapperRef}
           style={{
             left: `${subXPercent}%`,
-            bottom: controlsVisible ? `max(84px, ${subBottomPercent}%)` : `max(20px, ${subBottomPercent}%)`,
+            bottom: controlsVisible ? `max(58px, ${subBottomPercent}%)` : `max(16px, ${subBottomPercent}%)`,
             transform: "translateX(-50%)",
           }}
           className={`pointer-events-none absolute z-25 flex justify-center w-max max-w-[94%] sm:max-w-4xl ${
@@ -1283,13 +1284,22 @@ export function VideoPlayer({
             onPointerMove={handleSubPointerMove}
             onPointerUp={handleSubPointerUp}
             onPointerCancel={handleSubPointerUp}
-            style={{ fontSize: `${subFontSize}px`, lineHeight: 1.35 }}
+            style={{
+              fontSize: `clamp(11px, ${((subFontSize / 18) * 2.2).toFixed(2)}cqi, 48px)`,
+              lineHeight: 1.35,
+              padding: maskHardsub
+                ? "clamp(4px, 0.6cqi, 12px) clamp(8px, 1.4cqi, 24px)"
+                : "clamp(2px, 0.3cqi, 8px) clamp(6px, 1cqi, 16px)",
+              borderRadius: maskHardsub
+                ? "clamp(5px, 0.8cqi, 12px)"
+                : "clamp(3px, 0.5cqi, 8px)",
+            }}
             className={`group/sub relative pointer-events-auto text-center font-medium tracking-wide select-none cursor-move touch-none active:scale-[1.02] ${
               isDraggingSub ? "ring-2 ring-cyan-400 bg-black/95 shadow-[0_0_30px_rgba(34,211,238,0.6)]" : ""
             } ${
               maskHardsub
-                ? "rounded-lg bg-black/95 px-4 py-1.5 sm:px-5 sm:py-2 text-yellow-300 shadow-2xl ring-1 ring-white/10"
-                : "rounded-md px-3 py-1 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)] [text-shadow:_0_1px_4px_rgb(0_0_0_/_90%),_0_2px_8px_rgb(0_0_0_/_80%)] hover:bg-black/50 hover:ring-1 hover:ring-cyan-400/50"
+                ? "bg-black/95 text-yellow-300 shadow-2xl ring-1 ring-white/10"
+                : "text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)] [text-shadow:_0_1px_4px_rgb(0_0_0_/_90%),_0_2px_8px_rgb(0_0_0_/_80%)] hover:bg-black/50 hover:ring-1 hover:ring-cyan-400/50"
             }`}
             title="Nhấn giữ chuột hoặc ngón tay để kéo tự do (lên/xuống/trái/phải)"
           >
@@ -1574,7 +1584,7 @@ export function VideoPlayer({
                     <button
                       type="button"
                       onClick={() => {
-                        const next = Math.min(44, subFontSize + 2);
+                        const next = Math.min(26, subFontSize + 2);
                         setSubFontSize(next);
                         localStorage.setItem("pmovies_sub_font_size", String(next));
                       }}

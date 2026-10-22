@@ -967,6 +967,48 @@ export function VideoPlayer({
           font-weight: 600;
           white-space: pre-wrap;
           box-sizing: border-box;
+        }
+        .volume-group {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          background: rgba(255, 255, 255, 0.08);
+          padding: 0 8px 0 0;
+          border-radius: 8px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          height: 34px;
+        }
+        .volume-group button.mute {
+          border: none;
+          background: transparent;
+          cursor: pointer;
+          height: 100%;
+          min-width: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .volume-slider {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 54px;
+          height: 4px;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.25);
+          outline: none;
+          cursor: pointer;
+          transition: width 0.2s;
+        }
+        .volume-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background: #67e8f9;
+          cursor: pointer;
+          box-shadow: 0 0 8px rgba(103,232,249,0.8);
+        }
         .sub-btn {
           border: 1px solid rgba(255,255,255,.15);
           background: rgba(255,255,255,.1);
@@ -996,20 +1038,21 @@ export function VideoPlayer({
           right: 12px;
           width: 270px;
           max-width: calc(100vw - 24px);
-          background: rgba(15, 23, 42, 0.96);
-          border: 1px solid rgba(255, 255, 255, 0.18);
+          background: #0f172a;
+          border: 1px solid rgba(255, 255, 255, 0.2);
           border-radius: 12px;
           padding: 12px;
-          box-shadow: 0 12px 36px rgba(0,0,0,0.85);
+          box-shadow: 0 12px 36px rgba(0,0,0,0.95);
           backdrop-filter: blur(16px);
-          z-index: 60;
+          z-index: 100;
           display: none;
           flex-direction: column;
           gap: 10px;
           font-size: 12px;
+          color: white;
         }
         .pip-sub-modal.open {
-          display: flex;
+          display: flex !important;
         }
         .pip-sub-modal select {
           width: 100%;
@@ -1067,7 +1110,10 @@ export function VideoPlayer({
           <div class="row">
             <button class="play">▶</button>
             <span class="time">0:00</span>
-            <button class="mute">🔊</button>
+            <div class="volume-group" title="Âm lượng">
+              <button class="mute">🔊</button>
+              <input type="range" class="volume-slider" min="0" max="1" step="0.02" value="1" title="Âm lượng" />
+            </div>
             <select class="quality"><option value="-1">Auto</option></select>
             <button class="sub-btn" title="Cài đặt phụ đề">💬 Sub</button>
           </div>
@@ -1105,6 +1151,37 @@ export function VideoPlayer({
     const maskBtn = pipWindow.document.querySelector(".pip-mask-btn") as HTMLButtonElement;
     const offsetMinus = pipWindow.document.querySelector(".pip-offset-minus") as HTMLButtonElement;
     const offsetPlus = pipWindow.document.querySelector(".pip-offset-plus") as HTMLButtonElement;
+    const volumeSlider = pipWindow.document.querySelector(".volume-slider") as HTMLInputElement;
+    const muteBtn = pipWindow.document.querySelector(".mute") as HTMLButtonElement;
+
+    if (volumeSlider) {
+      volumeSlider.value = String(video.muted ? 0 : video.volume);
+      volumeSlider.oninput = (e) => {
+        e.stopPropagation();
+        const val = Number((e.target as HTMLInputElement).value);
+        video.volume = val;
+        video.muted = (val === 0);
+        changeVolume(val);
+        if (muteBtn) muteBtn.textContent = val === 0 ? "🔇" : "🔊";
+      };
+      volumeSlider.onpointerdown = (e) => e.stopPropagation();
+    }
+
+    if (muteBtn) {
+      muteBtn.textContent = (video.muted || video.volume === 0) ? "🔇" : "🔊";
+      muteBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (video.muted || video.volume === 0) {
+          video.muted = false;
+          if (video.volume === 0) video.volume = 0.8;
+        } else {
+          video.muted = true;
+        }
+        changeVolume(video.muted ? 0 : video.volume);
+        if (volumeSlider) volumeSlider.value = String(video.muted ? 0 : video.volume);
+        muteBtn.textContent = (video.muted || video.volume === 0) ? "🔇" : "🔊";
+      };
+    }
 
     let idleTimer: number | null = null;
     const showControls = () => {
@@ -1117,7 +1194,7 @@ export function VideoPlayer({
     shell.addEventListener("mousemove", showControls);
     shell.addEventListener("click", (e) => {
       showControls();
-      if (!subModal.contains(e.target as Node) && e.target !== subBtn) {
+      if (!subModal.contains(e.target as Node) && !subBtn.contains(e.target as Node)) {
         subModal.classList.remove("open");
       }
       if (e.target === shell || e.target === slot || e.target === video) {
@@ -1126,11 +1203,15 @@ export function VideoPlayer({
     });
     showControls();
 
+    subModal.onclick = (e) => e.stopPropagation();
+    subModal.onpointerdown = (e) => e.stopPropagation();
+
     subBtn.onclick = (e) => {
       e.stopPropagation();
       subModal.classList.toggle("open");
       showControls();
     };
+    subBtn.onpointerdown = (e) => e.stopPropagation();
 
     subCloseBtn.onclick = (e) => {
       e.stopPropagation();
@@ -1180,7 +1261,6 @@ export function VideoPlayer({
     };
 
     (pipWindow.document.querySelector(".play") as HTMLButtonElement).onclick = () => togglePlay();
-    (pipWindow.document.querySelector(".mute") as HTMLButtonElement).onclick = () => { video.muted = !video.muted; };
     (pipWindow.document.querySelector(".cancel") as HTMLButtonElement).onclick = () => cancelLocalRequest();
     (pipWindow.document.querySelector(".timeline") as HTMLElement).onclick = (event) => {
       const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
@@ -1328,6 +1408,12 @@ export function VideoPlayer({
     const offsetVal = pipWindow.document.querySelector(".pip-offset-val") as HTMLElement | null;
     if (offsetVal) {
       offsetVal.textContent = subOffset > 0 ? `+${subOffset.toFixed(1)}s` : `${subOffset.toFixed(1)}s`;
+    }
+
+    const volumeSliderEl = pipWindow.document.querySelector(".volume-slider") as HTMLInputElement | null;
+    const currentVideo = videoRef.current;
+    if (volumeSliderEl && currentVideo && pipWindow.document.activeElement !== volumeSliderEl) {
+      volumeSliderEl.value = String(currentVideo.muted ? 0 : currentVideo.volume);
     }
   }
 

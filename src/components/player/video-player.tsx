@@ -147,13 +147,18 @@ export function VideoPlayer({
   const subToastTimerRef = useRef<number | null>(null);
 
   const updateSubOffset = (newOffset: number) => {
-    setSubOffset(newOffset);
+    const clamped = Math.max(-40, Math.min(60, Number(newOffset) || 0));
+    setSubOffset(clamped);
     if (resumeKey) {
       try {
-        localStorage.setItem(`pmovies_sub_offset:${resumeKey}`, String(newOffset));
+        if (clamped === 0) {
+          localStorage.removeItem(`pmovies_sub_offset:${resumeKey}`);
+        } else {
+          localStorage.setItem(`pmovies_sub_offset:${resumeKey}`, String(clamped));
+        }
       } catch {}
     }
-    const formatted = newOffset > 0 ? `+${newOffset.toFixed(1)}s` : `${newOffset.toFixed(1)}s`;
+    const formatted = clamped > 0 ? `+${clamped.toFixed(1)}s` : `${clamped.toFixed(1)}s`;
     setSubToast(`Đồng bộ phụ đề: ${formatted}`);
     if (subToastTimerRef.current) window.clearTimeout(subToastTimerRef.current);
     subToastTimerRef.current = window.setTimeout(() => setSubToast(null), 1800);
@@ -1605,8 +1610,8 @@ export function VideoPlayer({
                                   .reduce((acc, ad) => acc + (ad.end - ad.start), 0);
                                 const curSubTime = currentTime - autoAd - subOffset;
                                 const nearby = cues
-                                  .filter((c) => Math.abs(c.start - curSubTime) <= 120)
-                                  .slice(0, 10);
+                                  .filter((c) => Math.abs(c.start - curSubTime) <= 30)
+                                  .slice(0, 8);
                                 if (nearby.length === 0) {
                                   return (
                                     <p className="text-[10px] text-slate-500 italic p-1">

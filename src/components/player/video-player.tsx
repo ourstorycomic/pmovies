@@ -1,7 +1,7 @@
 "use client";
 
 import Hls from "hls.js";
-import { Check, CheckCircle2, Flag, Loader2, Maximize, Minimize, Pause, PictureInPicture2, Play, Settings2, Volume2, VolumeX, X, LightbulbOff, Lightbulb, Subtitles, Zap, RotateCcw, RotateCw, ShieldAlert, Move } from "lucide-react";
+import { Check, CheckCircle2, Flag, Loader2, Maximize, Minimize, Pause, PictureInPicture2, Play, Settings2, Volume2, VolumeX, X, LightbulbOff, Lightbulb, Subtitles, Zap, RotateCcw, RotateCw, ShieldAlert, Move, Upload } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -156,6 +156,35 @@ export function VideoPlayer({
     document.addEventListener("pointerdown", handleOutsidePointer, true);
     return () => document.removeEventListener("pointerdown", handleOutsidePointer, true);
   }, [isSubMenuOpen]);
+
+  const customSubFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCustomSubUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+      const blob = new Blob([text], { type: "text/vtt; charset=utf-8" });
+      const blobUrl = URL.createObjectURL(blob);
+      const customSub = {
+        id: `custom-${Date.now()}`,
+        lang: "Tải lên (Custom / English)",
+        code: "en",
+        fileName: file.name,
+        displayName: `📁 ${file.name}`,
+        url: blobUrl,
+      };
+      setAvailableSubs((prev) => [customSub, ...prev]);
+      setSelectedSubUrl(blobUrl);
+      setSubToast(`Đã nạp phụ đề: ${file.name}`);
+      if (subToastTimerRef.current) window.clearTimeout(subToastTimerRef.current);
+      subToastTimerRef.current = window.setTimeout(() => setSubToast(null), 2500);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
 
   const [maskHardsub, setMaskHardsub] = useState(false);
   const [subPosition, setSubPosition] = useState<"bottom" | "overlay" | "top">("bottom");
@@ -1504,6 +1533,25 @@ export function VideoPlayer({
                 </select>
               </div>
             )}
+
+            {/* Nút tải lên phụ đề từ máy tính / điện thoại */}
+            <div>
+              <input
+                ref={customSubFileInputRef}
+                type="file"
+                accept=".srt,.vtt,.txt"
+                onChange={handleCustomSubUpload}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => customSubFileInputRef.current?.click()}
+                className="w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-cyan-400/40 bg-cyan-950/25 hover:bg-cyan-900/40 py-2 px-3 text-xs font-semibold text-cyan-300 hover:text-cyan-200 hover:border-cyan-400 active:scale-98 transition shadow-sm"
+                title="Tải lên file phụ đề tiếng Anh hoặc bất kỳ ngôn ngữ nào từ máy (.srt, .vtt)"
+              >
+                <Upload size={14} /> Tải file phụ đề từ máy (.srt, .vtt)
+              </button>
+            </div>
 
             {selectedSubUrl && (
               <>

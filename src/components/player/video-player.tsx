@@ -143,6 +143,8 @@ export function VideoPlayer({
   const [subBottomPercent, setSubBottomPercent] = useState<number>(8);
   const [subFontSize, setSubFontSize] = useState<number>(18);
   const [subOffset, setSubOffset] = useState(0);
+  const [subSpeed, setSubSpeed] = useState<number>(1.0);
+  const [isAutoSyncSub, setIsAutoSyncSub] = useState<boolean>(true);
   const [subToast, setSubToast] = useState<string | null>(null);
   const subToastTimerRef = useRef<number | null>(null);
 
@@ -159,7 +161,35 @@ export function VideoPlayer({
       } catch {}
     }
     const formatted = clamped > 0 ? `+${clamped.toFixed(1)}s` : `${clamped.toFixed(1)}s`;
-    setSubToast(`Đồng bộ phụ đề: ${formatted}`);
+    setSubToast(`Lệch phụ đề: ${formatted}`);
+    if (subToastTimerRef.current) window.clearTimeout(subToastTimerRef.current);
+    subToastTimerRef.current = window.setTimeout(() => setSubToast(null), 1800);
+  };
+
+  const updateSubSpeed = (newSpeed: number) => {
+    const clamped = Math.max(0.75, Math.min(1.25, Number(newSpeed.toFixed(3)) || 1.0));
+    setSubSpeed(clamped);
+    if (resumeKey) {
+      try {
+        if (clamped === 1.0) {
+          localStorage.removeItem(`pmovies_sub_speed:${resumeKey}`);
+        } else {
+          localStorage.setItem(`pmovies_sub_speed:${resumeKey}`, String(clamped));
+        }
+      } catch {}
+    }
+    setSubToast(`Tốc độ phụ đề: ${clamped.toFixed(2)}x`);
+    if (subToastTimerRef.current) window.clearTimeout(subToastTimerRef.current);
+    subToastTimerRef.current = window.setTimeout(() => setSubToast(null), 1800);
+  };
+
+  const toggleAutoSyncSub = () => {
+    const next = !isAutoSyncSub;
+    setIsAutoSyncSub(next);
+    try {
+      localStorage.setItem("pmovies_sub_auto_sync", String(next));
+    } catch {}
+    setSubToast(next ? "Đã bật tự động nhận biết quảng cáo" : "Đã tắt tự động (chỉnh tay 100%)");
     if (subToastTimerRef.current) window.clearTimeout(subToastTimerRef.current);
     subToastTimerRef.current = window.setTimeout(() => setSubToast(null), 1800);
   };
@@ -307,6 +337,23 @@ export function VideoPlayer({
         }
       } else {
         setSubOffset(0);
+      }
+
+      const savedSpeed = localStorage.getItem(`pmovies_sub_speed:${resumeKey}`);
+      if (savedSpeed !== null) {
+        const val = Number(savedSpeed);
+        if (!isNaN(val) && val >= 0.75 && val <= 1.25) {
+          setSubSpeed(val);
+        } else {
+          setSubSpeed(1.0);
+        }
+      } else {
+        setSubSpeed(1.0);
+      }
+
+      const savedAutoSync = localStorage.getItem("pmovies_sub_auto_sync");
+      if (savedAutoSync !== null) {
+        setIsAutoSyncSub(savedAutoSync === "true");
       }
     } catch {
       // Ignore localStorage errors
@@ -581,22 +628,24 @@ export function VideoPlayer({
       setActiveCueText("");
       return;
     }
-    // If user is currently watching inside an ad block, don't show movie dialogue
-    const inAd = detectedAds.some((ad) => currentTime >= ad.start && currentTime < ad.end);
+    // If auto sync is enabled and user is currently watching inside an ad block, don't show movie dialogue
+    const inAd = isAutoSyncSub && detectedAds.some((ad) => currentTime >= ad.start && currentTime < ad.end);
     if (inAd) {
       setActiveCueText("");
       return;
     }
 
-    // Auto-compensate for ad blocks that played before currentTime
-    const autoAdOffset = detectedAds
-      .filter((ad) => currentTime >= ad.end)
-      .reduce((acc, ad) => acc + (ad.end - ad.start), 0);
+    // Auto-compensate for ad blocks that played before currentTime (if auto sync is enabled)
+    const autoAdOffset = (isAutoSyncSub && detectedAds.length > 0)
+      ? detectedAds
+          .filter((ad) => currentTime >= ad.end)
+          .reduce((acc, ad) => acc + (ad.end - ad.start), 0)
+      : 0;
 
-    const adjustedTime = currentTime - autoAdOffset - subOffset;
+    const adjustedTime = (currentTime - autoAdOffset) * subSpeed - subOffset;
     const current = cues.find((c) => adjustedTime >= c.start && adjustedTime <= c.end);
     setActiveCueText(current ? current.text : "");
-  }, [currentTime, cues, subOffset, detectedAds]);
+  }, [currentTime, cues, subOffset, subSpeed, detectedAds, isAutoSyncSub]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -1361,49 +1410,7 @@ export function VideoPlayer({
               <Zap size={18} className={isAutoSkipEnabled ? "fill-amber-300" : ""} />
             </button>
 
-            {selectedSubUrl && (() => {
-              const currentAutoAd = detectedAds
-                .filter((ad) => currentTime >= ad.end)
-                .reduce((acc, ad) => acc + (ad.end - ad.start), 0);
-              
-              if (subOffset !== 0) {
-                return (
-                  <button
-                    type="button"
-                    onClick={() => updateSubOffset(0)}
-                    className="shrink-0 rounded-md px-2 py-1.5 text-[11px] font-bold border transition flex items-center gap-1 bg-amber-400/20 text-amber-300 border-amber-400/50 shadow-sm hover:bg-amber-400/30 active:scale-95"
-                    title="Bấm để ĐẶT LẠI VỀ 0s và BẬT TỰ ĐỘNG SYNC"
-                  >
-                    <RotateCcw size={12} />
-                    <span>Đặt lại 0s ({subOffset > 0 ? `+${subOffset}s` : `${subOffset}s`})</span>
-                  </button>
-                );
-              }
 
-              if (currentAutoAd > 0) {
-                return (
-                  <span
-                    className="shrink-0 rounded-md px-2 py-1 text-[10px] font-bold border border-emerald-400/40 bg-emerald-500/20 text-emerald-300 flex items-center gap-1 shadow-sm"
-                    title={`Hệ thống đang tự động bù ${Math.round(currentAutoAd)}s quảng cáo cho phụ đề`}
-                  >
-                    <Zap size={11} className="fill-emerald-400 text-emerald-400" />
-                    <span>Auto Sync ({Math.round(currentAutoAd)}s)</span>
-                  </span>
-                );
-              }
-
-              return (
-                <button
-                  type="button"
-                  onClick={() => updateSubOffset(30)}
-                  className="shrink-0 rounded-md px-2 py-1.5 text-[11px] font-bold border transition flex items-center gap-1 bg-white/10 text-slate-300 border-white/10 hover:bg-white/20 hover:text-white active:scale-95"
-                  title="Bấm 1-click để bù 30s quảng cáo chèn phim"
-                >
-                  <Zap size={12} className="fill-amber-300 text-amber-300" />
-                  <span>+30s QC</span>
-                </button>
-              );
-            })()}
 
             <div className="relative">
               <button
@@ -1490,9 +1497,38 @@ export function VideoPlayer({
                         </div>
                       </div>
 
+                      {/* Tự động nhận diện quảng cáo HLS */}
+                      <div className="rounded-lg bg-white/5 p-2.5 border border-white/10 flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-200 text-xs font-semibold">Tự động nhận biết quảng cáo</span>
+                            {detectedAds.length > 0 && isAutoSyncSub && (
+                              <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                                {Math.round(detectedAds.reduce((acc, a) => acc + (a.end - a.start), 0))}s
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-400">Tự trừ thời gian quảng cáo của đài</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={toggleAutoSyncSub}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            isAutoSyncSub ? "bg-emerald-500" : "bg-white/20"
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              isAutoSyncSub ? "translate-x-4" : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {/* Lệch giờ (Sync offset) */}
                       <div className="rounded-lg bg-white/5 p-2.5 border border-white/10 space-y-2">
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-300 font-medium">Lệch giờ (Sync)</span>
+                          <span className="text-slate-300 font-medium">Chỉnh lệch giờ (Sync)</span>
                           <div className="flex items-center gap-1.5">
                             <input
                               type="number"
@@ -1506,143 +1542,213 @@ export function VideoPlayer({
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => updateSubOffset(0)}
-                          className="w-full py-1.5 text-[11px] font-bold rounded-md bg-emerald-500/25 text-emerald-300 border border-emerald-400/40 hover:bg-emerald-500/35 flex items-center justify-center gap-1.5 transition active:scale-98 shadow-sm"
-                          title="Bấm để kích hoạt tính năng tự động dò và bù giờ quảng cáo thông minh"
-                        >
-                          <Zap size={13} className="fill-emerald-400 text-emerald-400 animate-pulse" />
-                          <span>Bật Tự Động Nhận Biết (Auto-Sync)</span>
-                        </button>
-
-                        <div className="space-y-1">
-                          <div className="grid grid-cols-5 gap-1 text-[11px] font-semibold">
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(Number((subOffset - 2).toFixed(1)))}
-                              className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
-                            >
-                              -2s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(Number((subOffset - 0.5).toFixed(1)))}
-                              className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
-                            >
-                              -0.5s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(0)}
-                              className="rounded bg-cyan-500/20 py-1 hover:bg-cyan-500/30 text-cyan-300 font-bold active:scale-95 transition"
-                            >
-                              0s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(Number((subOffset + 0.5).toFixed(1)))}
-                              className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
-                            >
-                              +0.5s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(Number((subOffset + 2).toFixed(1)))}
-                              className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
-                            >
-                              +2s
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-4 gap-1 text-[10px] font-bold text-amber-300/90">
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(Number((subOffset - 30).toFixed(1)))}
-                              className="rounded bg-amber-400/10 py-0.5 hover:bg-amber-400/20 active:scale-95 transition"
-                              title="Tua lùi 30 giây (quảng cáo đầu phim)"
-                            >
-                              -30s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(Number((subOffset - 10).toFixed(1)))}
-                              className="rounded bg-amber-400/10 py-0.5 hover:bg-amber-400/20 active:scale-95 transition"
-                            >
-                              -10s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(Number((subOffset + 10).toFixed(1)))}
-                              className="rounded bg-amber-400/10 py-0.5 hover:bg-amber-400/20 active:scale-95 transition"
-                            >
-                              +10s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(Number((subOffset + 30).toFixed(1)))}
-                              className="rounded bg-amber-400/10 py-0.5 hover:bg-amber-400/20 active:scale-95 transition"
-                              title="Tua tới 30 giây (quảng cáo đầu phim)"
-                            >
-                              +30s
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="pt-1 border-t border-white/10">
+                        <div className="grid grid-cols-7 gap-1 text-[11px] font-semibold text-center">
                           <button
                             type="button"
-                            onClick={() => setShowSyncPicker((v) => !v)}
-                            className="w-full rounded-md bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-400/30 py-1.5 px-2 text-[11px] font-bold text-cyan-200 hover:bg-cyan-500/30 flex items-center justify-center gap-1.5 transition active:scale-98"
+                            onClick={() => updateSubOffset(Number((subOffset - 5).toFixed(1)))}
+                            className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                            title="Lùi 5s"
                           >
-                            🎯 Tự động khớp theo câu bạn vừa nghe
+                            -5s
                           </button>
-
-                          {showSyncPicker && (
-                            <div className="mt-2 space-y-1 max-h-48 overflow-y-auto rounded-lg border border-white/15 bg-black/95 p-2 shadow-inner custom-scrollbar">
-                              <p className="text-[10px] text-amber-200 font-semibold pb-1 border-b border-white/10">
-                                Bấm vào câu thoại nhân vật vừa nói trên phim:
-                              </p>
-                              {(() => {
-                                const autoAd = detectedAds
-                                  .filter((ad) => currentTime >= ad.end)
-                                  .reduce((acc, ad) => acc + (ad.end - ad.start), 0);
-                                const curSubTime = currentTime - autoAd - subOffset;
-                                const nearby = cues
-                                  .filter((c) => Math.abs(c.start - curSubTime) <= 30)
-                                  .slice(0, 8);
-                                if (nearby.length === 0) {
-                                  return (
-                                    <p className="text-[10px] text-slate-500 italic p-1">
-                                      Không tìm thấy câu thoại gần giây này ({formatTime(currentTime)})
-                                    </p>
-                                  );
-                                }
-                                return nearby.map((c, i) => (
-                                  <button
-                                    key={i}
-                                    type="button"
-                                    onClick={() => {
-                                      const autoOffset = Number((currentTime - autoAd - c.start).toFixed(1));
-                                      updateSubOffset(autoOffset);
-                                      setShowSyncPicker(false);
-                                    }}
-                                    className="w-full text-left rounded p-1.5 hover:bg-cyan-500/25 text-[11px] text-slate-200 hover:text-cyan-200 border border-transparent hover:border-cyan-400/30 transition flex flex-col gap-0.5"
-                                  >
-                                    <span className="text-[9px] text-cyan-400 font-mono font-bold">[{formatTime(c.start)}]</span>
-                                    <span className="line-clamp-2 leading-tight">{c.text}</span>
-                                  </button>
-                                ));
-                              })()}
-                            </div>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => updateSubOffset(Number((subOffset - 1).toFixed(1)))}
+                            className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                            title="Lùi 1s"
+                          >
+                            -1s
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateSubOffset(Number((subOffset - 0.5).toFixed(1)))}
+                            className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                            title="Lùi 0.5s"
+                          >
+                            -0.5s
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateSubOffset(0)}
+                            className={`rounded py-1 font-bold active:scale-95 transition ${
+                              subOffset === 0
+                                ? "bg-cyan-500/30 text-cyan-200 border border-cyan-400/40"
+                                : "bg-white/10 hover:bg-white/20 text-slate-200"
+                            }`}
+                            title="Đặt lại về 0s"
+                          >
+                            0s
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateSubOffset(Number((subOffset + 0.5).toFixed(1)))}
+                            className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                            title="Tiến 0.5s"
+                          >
+                            +0.5s
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateSubOffset(Number((subOffset + 1).toFixed(1)))}
+                            className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                            title="Tiến 1s"
+                          >
+                            +1s
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateSubOffset(Number((subOffset + 5).toFixed(1)))}
+                            className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                            title="Tiến 5s"
+                          >
+                            +5s
+                          </button>
                         </div>
+
+                        <div className="grid grid-cols-2 gap-1.5 text-[10px] font-bold pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => updateSubOffset(Number((subOffset - 30).toFixed(1)))}
+                            className="rounded bg-amber-400/10 py-1 hover:bg-amber-400/20 text-amber-300 active:scale-95 transition border border-amber-400/20"
+                            title="Lùi 30 giây"
+                          >
+                            Lùi 30 giây (-30s)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateSubOffset(Number((subOffset + 30).toFixed(1)))}
+                            className="rounded bg-amber-400/10 py-1 hover:bg-amber-400/20 text-amber-300 active:scale-95 transition border border-amber-400/20"
+                            title="Tiến 30 giây"
+                          >
+                            Tiến 30 giây (+30s)
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Tốc độ phụ đề (Subtitle Speed / FPS Rate) */}
+                      <div className="rounded-lg bg-white/5 p-2.5 border border-white/10 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <div>
+                            <span className="text-slate-300 font-medium">Tốc độ phụ đề</span>
+                            <p className="text-[10px] text-slate-400">Dùng khi phụ đề nhanh/chậm dần theo thời gian</p>
+                          </div>
+                          <span className="font-mono text-cyan-300 font-bold px-2 py-0.5 rounded bg-black/60 border border-white/10 text-xs">
+                            {subSpeed.toFixed(2)}x
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-5 gap-1 text-[11px] font-semibold text-center">
+                          <button
+                            type="button"
+                            onClick={() => updateSubSpeed(Number((subSpeed - 0.01).toFixed(3)))}
+                            className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                            title="Giảm tốc độ phụ đề 1%"
+                          >
+                            -0.01
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateSubSpeed(0.96)}
+                            className={`rounded py-1 text-xs active:scale-95 transition ${
+                              subSpeed === 0.96
+                                ? "bg-cyan-500/30 text-cyan-200 font-bold border border-cyan-400/40"
+                                : "bg-white/10 hover:bg-white/20 text-slate-300"
+                            }`}
+                            title="Tỷ lệ 24fps sang 25fps (0.96x)"
+                          >
+                            0.96x
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateSubSpeed(1.0)}
+                            className={`rounded py-1 text-xs active:scale-95 transition ${
+                              subSpeed === 1.0
+                                ? "bg-cyan-500/30 text-cyan-200 font-bold border border-cyan-400/40"
+                                : "bg-white/10 hover:bg-white/20 text-slate-300"
+                            }`}
+                            title="Tốc độ chuẩn 1.00x"
+                          >
+                            1.0x
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateSubSpeed(1.04)}
+                            className={`rounded py-1 text-xs active:scale-95 transition ${
+                              subSpeed === 1.04
+                                ? "bg-cyan-500/30 text-cyan-200 font-bold border border-cyan-400/40"
+                                : "bg-white/10 hover:bg-white/20 text-slate-300"
+                            }`}
+                            title="Tỷ lệ 25fps sang 24fps (1.04x)"
+                          >
+                            1.04x
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateSubSpeed(Number((subSpeed + 0.01).toFixed(3)))}
+                            className="rounded bg-white/10 py-1 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                            title="Tăng tốc độ phụ đề 1%"
+                          >
+                            +0.01
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Khớp theo câu vừa nghe (Dialogue Picker) */}
+                      <div className="pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setShowSyncPicker((v) => !v)}
+                          className="w-full rounded-md bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-400/30 py-1.5 px-2 text-[11px] font-bold text-cyan-200 hover:bg-cyan-500/30 flex items-center justify-center gap-1.5 transition active:scale-98"
+                        >
+                          🎯 Khớp theo câu bạn vừa nghe
+                        </button>
+
+                        {showSyncPicker && (
+                          <div className="mt-2 space-y-1 max-h-48 overflow-y-auto rounded-lg border border-white/15 bg-black/95 p-2 shadow-inner custom-scrollbar">
+                            <p className="text-[10px] text-amber-200 font-semibold pb-1 border-b border-white/10">
+                              Bấm vào câu thoại nhân vật vừa nói trên phim:
+                            </p>
+                            {(() => {
+                              const autoAd = (isAutoSyncSub && detectedAds.length > 0)
+                                ? detectedAds
+                                    .filter((ad) => currentTime >= ad.end)
+                                    .reduce((acc, ad) => acc + (ad.end - ad.start), 0)
+                                : 0;
+                              const curSubTime = (currentTime - autoAd) * subSpeed - subOffset;
+                              const nearby = cues
+                                .filter((c) => Math.abs(c.start - curSubTime) <= 30)
+                                .slice(0, 8);
+                              if (nearby.length === 0) {
+                                return (
+                                  <p className="text-[10px] text-slate-500 italic p-1">
+                                    Không tìm thấy câu thoại gần giây này ({formatTime(currentTime)})
+                                  </p>
+                                );
+                              }
+                              return nearby.map((c, i) => (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  onClick={() => {
+                                    const autoOffset = Number(((currentTime - autoAd) * subSpeed - c.start).toFixed(1));
+                                    updateSubOffset(autoOffset);
+                                    setShowSyncPicker(false);
+                                  }}
+                                  className="w-full text-left rounded p-1.5 hover:bg-cyan-500/25 text-[11px] text-slate-200 hover:text-cyan-200 border border-transparent hover:border-cyan-400/30 transition flex flex-col gap-0.5"
+                                >
+                                  <span className="text-[9px] text-cyan-400 font-mono font-bold">[{formatTime(c.start)}]</span>
+                                  <span className="line-clamp-2 leading-tight">{c.text}</span>
+                                </button>
+                              ));
+                            })()}
+                          </div>
+                        )}
+                      </div>
 
                         <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
                           <span>Phím: <kbd className="rounded bg-white/10 px-1 font-mono text-cyan-300">[</kbd> lùi / <kbd className="rounded bg-white/10 px-1 font-mono text-cyan-300">]</kbd> tiến</span>
                           <span>(Shift + phím để nhảy 2s)</span>
                         </div>
-                      </div>
 
                       <div className="flex items-center justify-between">
                         <span className="text-slate-300">Che sub cũ</span>

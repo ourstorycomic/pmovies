@@ -253,6 +253,7 @@ export function VideoPlayer({
   const [adBannerBlur, setAdBannerBlur] = useState<"black" | "blur">("black");
 
   const subWrapperRef = useRef<HTMLDivElement | null>(null);
+  const subBadgeRef = useRef<HTMLSpanElement | null>(null);
   const isDraggingSubRef = useRef(false);
   const isDraggingPipSubRef = useRef(false);
   const subXPercentRef = useRef(50);
@@ -272,39 +273,49 @@ export function VideoPlayer({
     setIsDraggingSub(true);
     startDragXRef.current = e.clientX;
     startDragYRef.current = e.clientY;
-    startXPercentRef.current = subXPercent;
-    startBottomPercentRef.current = subBottomPercent;
-    currentXPercentRef.current = subXPercent;
-    currentBottomPercentRef.current = subBottomPercent;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
+    const parsedLeft = subWrapperRef.current ? parseFloat(subWrapperRef.current.style.left) : NaN;
+    const parsedBottom = subWrapperRef.current ? parseFloat(subWrapperRef.current.style.bottom) : NaN;
+    const currentLeft = !isNaN(parsedLeft) ? parsedLeft : subXPercent;
+    const currentBottom = !isNaN(parsedBottom) ? parsedBottom : subBottomPercent;
+
+    startXPercentRef.current = currentLeft;
+    startBottomPercentRef.current = currentBottom;
+    currentXPercentRef.current = currentLeft;
+    currentBottomPercentRef.current = currentBottom;
+
+    if (subWrapperRef.current) {
+      subWrapperRef.current.style.transition = "none";
+    }
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {}
   };
 
   const handleSubPointerMove = (e: React.PointerEvent) => {
     if (!isDraggingSubRef.current || !containerRef.current) return;
+    e.stopPropagation();
     const container = containerRef.current;
     const containerWidth = container.clientWidth || 800;
     const containerHeight = container.clientHeight || 500;
 
     const deltaX = e.clientX - startDragXRef.current;
     const deltaXPercent = (deltaX / containerWidth) * 100;
-    const nextX = Math.max(10, Math.min(90, Math.round((startXPercentRef.current + deltaXPercent) * 10) / 10));
+    const nextX = Math.max(8, Math.min(92, Math.round((startXPercentRef.current + deltaXPercent) * 10) / 10));
 
     const deltaY = startDragYRef.current - e.clientY;
     const deltaYPercent = (deltaY / containerHeight) * 100;
-    const nextY = Math.max(5, Math.min(88, Math.round((startBottomPercentRef.current + deltaYPercent) * 10) / 10));
+    const nextY = Math.max(4, Math.min(88, Math.round((startBottomPercentRef.current + deltaYPercent) * 10) / 10));
 
     currentXPercentRef.current = nextX;
     currentBottomPercentRef.current = nextY;
 
-    // Direct hardware-accelerated movement via RAF - zero React re-render lags!
-    if (rafSubDragRef.current === null) {
-      rafSubDragRef.current = requestAnimationFrame(() => {
-        if (subWrapperRef.current) {
-          subWrapperRef.current.style.left = `${currentXPercentRef.current}%`;
-          subWrapperRef.current.style.bottom = `${currentBottomPercentRef.current}%`;
-        }
-        rafSubDragRef.current = null;
-      });
+    if (subWrapperRef.current) {
+      subWrapperRef.current.style.left = `${nextX}%`;
+      subWrapperRef.current.style.bottom = `${nextY}%`;
+    }
+    if (subBadgeRef.current) {
+      subBadgeRef.current.textContent = `X: ${Math.round(nextX)}% | Y: ${Math.round(nextY)}%`;
     }
   };
 
@@ -312,10 +323,6 @@ export function VideoPlayer({
     if (isDraggingSubRef.current) {
       isDraggingSubRef.current = false;
       setIsDraggingSub(false);
-      if (rafSubDragRef.current) {
-        cancelAnimationFrame(rafSubDragRef.current);
-        rafSubDragRef.current = null;
-      }
       try {
         (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
       } catch {}
@@ -324,8 +331,20 @@ export function VideoPlayer({
       const finalY = currentBottomPercentRef.current;
       setSubXPercent(finalX);
       setSubBottomPercent(finalY);
-      localStorage.setItem("pmovies_sub_x_percent", String(finalX));
-      localStorage.setItem("pmovies_sub_bottom_percent", String(finalY));
+      subXPercentRef.current = finalX;
+      subBottomPercentRef.current = finalY;
+      try {
+        localStorage.setItem("pmovies_sub_x_percent", String(finalX));
+        localStorage.setItem("pmovies_sub_bottom_percent", String(finalY));
+      } catch {}
+
+      if (subWrapperRef.current) {
+        subWrapperRef.current.style.left = `${finalX}%`;
+        subWrapperRef.current.style.bottom = controlsVisible
+          ? `max(58px, ${finalY}%)`
+          : `max(16px, ${finalY}%)`;
+        subWrapperRef.current.style.transition = "";
+      }
     }
   };
 
@@ -1232,6 +1251,8 @@ export function VideoPlayer({
         } catch {}
         subXPercentRef.current = pipCurrentLeft;
         subBottomPercentRef.current = pipCurrentBottom;
+        currentXPercentRef.current = pipCurrentLeft;
+        currentBottomPercentRef.current = pipCurrentBottom;
         setSubXPercent(pipCurrentLeft);
         setSubBottomPercent(pipCurrentBottom);
         localStorage.setItem("pmovies_sub_x_percent", String(pipCurrentLeft));
@@ -1754,15 +1775,17 @@ export function VideoPlayer({
         </div>
       )}
 
-      {(!documentPipWindowRef.current && (activeCueText || (isSubMenuOpen && selectedSubUrl))) && (
+      {(!isPictureInPicture && (activeCueText || (isSubMenuOpen && selectedSubUrl))) && (
         <div
           ref={subWrapperRef}
           style={{
-            left: `${subXPercent}%`,
-            bottom: controlsVisible ? `max(58px, ${subBottomPercent}%)` : `max(16px, ${subBottomPercent}%)`,
+            left: isDraggingSub ? `${currentXPercentRef.current}%` : `${subXPercent}%`,
+            bottom: isDraggingSub
+              ? `${currentBottomPercentRef.current}%`
+              : (controlsVisible ? `max(58px, ${subBottomPercent}%)` : `max(16px, ${subBottomPercent}%)`),
             transform: "translateX(-50%)",
           }}
-          className={`pointer-events-none absolute z-25 flex justify-center w-max max-w-[94%] sm:max-w-4xl ${
+          className={`pointer-events-none absolute z-[35] flex justify-center w-max max-w-[94%] sm:max-w-4xl ${
             isDraggingSub ? "transition-none pointer-events-auto" : "transition-[left,bottom] duration-200 ease-out"
           }`}
         >
@@ -1809,7 +1832,10 @@ export function VideoPlayer({
                 isDraggingSub ? "opacity-100 scale-105" : "opacity-0 group-hover/sub:opacity-100"
               }`}
             >
-              <Move size={10} /> X: {Math.round(subXPercent)}% | Y: {Math.round(subBottomPercent)}%
+              <Move size={10} />
+              <span ref={subBadgeRef}>
+                X: {Math.round(isDraggingSub ? currentXPercentRef.current : subXPercent)}% | Y: {Math.round(isDraggingSub ? currentBottomPercentRef.current : subBottomPercent)}%
+              </span>
             </div>
           </div>
         </div>

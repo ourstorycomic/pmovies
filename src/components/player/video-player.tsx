@@ -509,8 +509,18 @@ export function VideoPlayer({
     video.addEventListener("waiting", onWaiting);
     video.addEventListener("playing", onPlaying);
     video.addEventListener("canplay", onPlaying);
-    const onEnterPictureInPicture = () => setIsPictureInPicture(true);
-    const onLeavePictureInPicture = () => setIsPictureInPicture(false);
+    const onEnterPictureInPicture = () => {
+      setIsPictureInPicture(true);
+      if (!documentPipWindowRef.current) {
+        const track = Array.from(video.textTracks).find((t) => t.label === "pmovies-sub");
+        if (track) track.mode = "showing";
+      }
+    };
+    const onLeavePictureInPicture = () => {
+      setIsPictureInPicture(false);
+      const track = Array.from(video.textTracks).find((t) => t.label === "pmovies-sub");
+      if (track) track.mode = "hidden";
+    };
 
     video.addEventListener("enterpictureinpicture", onEnterPictureInPicture);
     video.addEventListener("leavepictureinpicture", onLeavePictureInPicture);
@@ -663,6 +673,28 @@ export function VideoPlayer({
           }
         }
         setCues(parsedCues);
+        const video = videoRef.current;
+        if (video && typeof window !== "undefined") {
+          try {
+            let track = Array.from(video.textTracks).find((t) => t.label === "pmovies-sub");
+            if (!track) {
+              track = video.addTextTrack("subtitles", "pmovies-sub", "vi");
+            }
+            if (track.cues) {
+              for (let i = track.cues.length - 1; i >= 0; i--) {
+                track.removeCue(track.cues[i]);
+              }
+            }
+            if (typeof VTTCue !== "undefined") {
+              parsedCues.forEach((c) => {
+                try {
+                  track?.addCue(new VTTCue(c.start, c.end, c.text));
+                } catch {}
+              });
+            }
+            track.mode = "hidden";
+          } catch {}
+        }
       })
       .catch(() => setCues([]));
   }, [selectedSubUrl]);
@@ -908,10 +940,41 @@ export function VideoPlayer({
         @keyframes spin { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
         .skip-btn { position: absolute; bottom: 70px; right: 16px; background: rgba(0,0,0,0.78); border: 1px solid rgba(252,211,77,0.28); color: #fef3c7; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: bold; cursor: pointer; display: none; backdrop-filter: blur(8px); transition: background 0.2s; z-index: 50; }
         .skip-btn:hover { background: rgba(0,0,0,0.9); border-color: rgba(252,211,77,0.5); }
+        .pip-sub-wrapper {
+          position: absolute;
+          left: 50%;
+          bottom: 16px;
+          transform: translateX(-50%);
+          max-width: 90%;
+          pointer-events: none;
+          z-index: 45;
+          text-align: center;
+          transition: bottom .25s ease-out;
+        }
+        .shell:not(.idle) .pip-sub-wrapper {
+          bottom: 72px;
+        }
+        .pip-sub-text {
+          display: none;
+          font-size: clamp(12px, 3.8vw, 24px);
+          line-height: 1.35;
+          color: #fef08a;
+          background: rgba(0, 0, 0, 0.92);
+          border-radius: 6px;
+          padding: 4px 10px;
+          text-shadow: 0 1px 3px rgba(0,0,0,0.95);
+          box-shadow: 0 4px 16px rgba(0,0,0,0.7);
+          font-weight: 600;
+          white-space: pre-wrap;
+          box-sizing: border-box;
+        }
       </style>
       <div class="shell">
         <div class="video-slot"></div>
         <div class="shade"></div>
+        <div class="pip-sub-wrapper">
+          <div class="pip-sub-text"></div>
+        </div>
         <button class="skip-btn skip-ad">Bỏ qua quảng cáo</button>
         <button class="skip-btn skip-intro">Skip intro</button>
         <div class="loader"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></div>
@@ -936,10 +999,13 @@ export function VideoPlayer({
     const onClose = () => {
       videoSlotRef.current?.append(video);
       video.className = "h-full w-full object-contain";
+      video.removeEventListener("timeupdate", updateDocumentPictureInPictureUi);
       documentPipWindowRef.current = null;
       setIsPictureInPicture(false);
       setPipContainer(null);
     };
+
+    video.addEventListener("timeupdate", updateDocumentPictureInPictureUi);
 
     let idleTimer: number | null = null;
     const showControls = () => {
@@ -1027,6 +1093,41 @@ export function VideoPlayer({
       const showCard = Boolean(locked && localRequest && localRequest.type !== "seek");
       requestCard.style.display = showCard ? "flex" : "none";
       requestText.textContent = showCard ? `You requested ${localRequest?.type}` : "";
+    }
+
+    const pipSubText = pipWindow.document.querySelector(".pip-sub-text") as HTMLElement | null;
+    if (pipSubText) {
+      const currentVideoTime = videoRef.current?.currentTime ?? currentTime;
+      let cueToDisplay = activeCueText;
+      if (cues.length > 0) {
+        const inAd = isAutoSyncSub && detectedAds.some((ad) => currentVideoTime >= ad.start && currentVideoTime < ad.end);
+        if (inAd) {
+          cueToDisplay = "";
+        } else {
+          const autoAdOffset = (isAutoSyncSub && detectedAds.length > 0)
+            ? detectedAds.filter((ad) => currentVideoTime >= ad.end).reduce((acc, ad) => acc + (ad.end - ad.start), 0)
+            : 0;
+          const adjustedTime = (currentVideoTime - autoAdOffset) * subSpeed - subOffset;
+          const matchingCue = cues.find((c) => adjustedTime >= c.start && adjustedTime <= c.end);
+          cueToDisplay = matchingCue ? matchingCue.text : "";
+        }
+      }
+
+      if (cueToDisplay) {
+        pipSubText.textContent = cueToDisplay;
+        pipSubText.style.display = "inline-block";
+        pipSubText.style.fontSize = `clamp(12px, ${((subFontSize / 18) * 3.8).toFixed(1)}vw, 26px)`;
+        if (maskHardsub) {
+          pipSubText.style.background = "rgba(0, 0, 0, 0.96)";
+          pipSubText.style.color = "#fde047";
+        } else {
+          pipSubText.style.background = "rgba(0, 0, 0, 0.85)";
+          pipSubText.style.color = "#ffffff";
+        }
+      } else {
+        pipSubText.textContent = "";
+        pipSubText.style.display = "none";
+      }
     }
   }
 
@@ -1267,7 +1368,7 @@ export function VideoPlayer({
         </div>
       )}
 
-      {(activeCueText || (isSubMenuOpen && selectedSubUrl)) && (
+      {(!documentPipWindowRef.current && (activeCueText || (isSubMenuOpen && selectedSubUrl))) && (
         <div
           ref={subWrapperRef}
           style={{

@@ -967,6 +967,60 @@ export function VideoPlayer({
           font-weight: 600;
           white-space: pre-wrap;
           box-sizing: border-box;
+        .sub-btn {
+          border: 1px solid rgba(255,255,255,.15);
+          background: rgba(255,255,255,.1);
+          color: white;
+          border-radius: 8px;
+          height: 34px;
+          padding: 0 10px;
+          font-weight: 700;
+          font-size: 12px;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          cursor: pointer;
+          transition: background .2s, border-color .2s;
+        }
+        .sub-btn.active {
+          background: rgba(34, 211, 238, 0.2);
+          border-color: rgba(34, 211, 238, 0.5);
+          color: #67e8f9;
+        }
+        .sub-btn:hover {
+          background: rgba(255,255,255,.2);
+        }
+        .pip-sub-modal {
+          position: absolute;
+          bottom: 58px;
+          right: 12px;
+          width: 270px;
+          max-width: calc(100vw - 24px);
+          background: rgba(15, 23, 42, 0.96);
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          border-radius: 12px;
+          padding: 12px;
+          box-shadow: 0 12px 36px rgba(0,0,0,0.85);
+          backdrop-filter: blur(16px);
+          z-index: 60;
+          display: none;
+          flex-direction: column;
+          gap: 10px;
+          font-size: 12px;
+        }
+        .pip-sub-modal.open {
+          display: flex;
+        }
+        .pip-sub-modal select {
+          width: 100%;
+          font-size: 11px;
+        }
+        .pip-val-badge {
+          font-family: monospace;
+          font-weight: 700;
+          color: #67e8f9;
+          min-width: 34px;
+          text-align: center;
         }
       </style>
       <div class="shell">
@@ -975,13 +1029,48 @@ export function VideoPlayer({
         <div class="pip-sub-wrapper">
           <div class="pip-sub-text"></div>
         </div>
+        <div class="pip-sub-modal">
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.12); padding-bottom:6px;">
+            <span style="font-weight:700; color:#67e8f9; display:flex; align-items:center; gap:5px;">💬 Cài đặt phụ đề</span>
+            <button class="pip-sub-close" style="height:22px; width:22px; min-width:22px; padding:0; line-height:1; border-radius:999px;">×</button>
+          </div>
+          <div>
+            <select class="pip-sub-select"></select>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="color:#cbd5e1;">Cỡ chữ</span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <button class="pip-font-minus" style="height:26px; width:26px; min-width:26px;">-</button>
+              <span class="pip-font-val pip-val-badge">18px</span>
+              <button class="pip-font-plus" style="height:26px; width:26px; min-width:26px;">+</button>
+            </div>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="color:#cbd5e1;">Che sub cũ</span>
+            <button class="pip-mask-btn" style="height:26px; padding:0 12px; font-size:11px; border-radius:999px;">TẮT</button>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="color:#cbd5e1;">Khớp thời gian</span>
+            <div style="display:flex; align-items:center; gap:4px;">
+              <button class="pip-offset-minus" style="height:26px; padding:0 6px; font-size:10px;">-0.5s</button>
+              <span class="pip-offset-val pip-val-badge" style="color:#fde047;">0s</span>
+              <button class="pip-offset-plus" style="height:26px; padding:0 6px; font-size:10px;">+0.5s</button>
+            </div>
+          </div>
+        </div>
         <button class="skip-btn skip-ad">Bỏ qua quảng cáo</button>
         <button class="skip-btn skip-intro">Skip intro</button>
         <div class="loader"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></div>
         <div class="request-card"><span class="request-text"></span><button class="cancel">×</button></div>
         <div class="controls">
           <div class="timeline"><div class="track"><div class="progress"></div><div class="marker"><div class="bubble"></div></div></div></div>
-          <div class="row"><button class="play">▶</button><span class="time">0:00</span><button class="mute">🔊</button><select class="quality"><option value="-1">Auto</option></select></div>
+          <div class="row">
+            <button class="play">▶</button>
+            <span class="time">0:00</span>
+            <button class="mute">🔊</button>
+            <select class="quality"><option value="-1">Auto</option></select>
+            <button class="sub-btn" title="Cài đặt phụ đề">💬 Sub</button>
+          </div>
         </div>
       </div>
     `;
@@ -1007,20 +1096,88 @@ export function VideoPlayer({
 
     video.addEventListener("timeupdate", updateDocumentPictureInPictureUi);
 
+    const subBtn = pipWindow.document.querySelector(".sub-btn") as HTMLButtonElement;
+    const subModal = pipWindow.document.querySelector(".pip-sub-modal") as HTMLElement;
+    const subCloseBtn = pipWindow.document.querySelector(".pip-sub-close") as HTMLButtonElement;
+    const subSelect = pipWindow.document.querySelector(".pip-sub-select") as HTMLSelectElement;
+    const fontMinus = pipWindow.document.querySelector(".pip-font-minus") as HTMLButtonElement;
+    const fontPlus = pipWindow.document.querySelector(".pip-font-plus") as HTMLButtonElement;
+    const maskBtn = pipWindow.document.querySelector(".pip-mask-btn") as HTMLButtonElement;
+    const offsetMinus = pipWindow.document.querySelector(".pip-offset-minus") as HTMLButtonElement;
+    const offsetPlus = pipWindow.document.querySelector(".pip-offset-plus") as HTMLButtonElement;
+
     let idleTimer: number | null = null;
     const showControls = () => {
       shell.classList.remove("idle");
       if (idleTimer) pipWindow.clearTimeout(idleTimer);
-      idleTimer = pipWindow.setTimeout(() => shell.classList.add("idle"), 2600);
+      if (!subModal.classList.contains("open")) {
+        idleTimer = pipWindow.setTimeout(() => shell.classList.add("idle"), 2600);
+      }
     };
     shell.addEventListener("mousemove", showControls);
     shell.addEventListener("click", (e) => {
       showControls();
+      if (!subModal.contains(e.target as Node) && e.target !== subBtn) {
+        subModal.classList.remove("open");
+      }
       if (e.target === shell || e.target === slot || e.target === video) {
         togglePlay();
       }
     });
     showControls();
+
+    subBtn.onclick = (e) => {
+      e.stopPropagation();
+      subModal.classList.toggle("open");
+      showControls();
+    };
+
+    subCloseBtn.onclick = (e) => {
+      e.stopPropagation();
+      subModal.classList.remove("open");
+    };
+
+    subSelect.onchange = (e) => {
+      const url = (e.target as HTMLSelectElement).value;
+      setSelectedSubUrl(url);
+    };
+
+    fontMinus.onclick = (e) => {
+      e.stopPropagation();
+      setSubFontSize((prev) => {
+        const next = Math.max(12, prev - 2);
+        localStorage.setItem("pmovies_sub_font_size", String(next));
+        return next;
+      });
+    };
+
+    fontPlus.onclick = (e) => {
+      e.stopPropagation();
+      setSubFontSize((prev) => {
+        const next = Math.min(26, prev + 2);
+        localStorage.setItem("pmovies_sub_font_size", String(next));
+        return next;
+      });
+    };
+
+    maskBtn.onclick = (e) => {
+      e.stopPropagation();
+      setMaskHardsub((prev) => {
+        const next = !prev;
+        localStorage.setItem("pmovies_mask_hardsub", String(next));
+        return next;
+      });
+    };
+
+    offsetMinus.onclick = (e) => {
+      e.stopPropagation();
+      updateSubOffset(subOffset - 0.5);
+    };
+
+    offsetPlus.onclick = (e) => {
+      e.stopPropagation();
+      updateSubOffset(subOffset + 0.5);
+    };
 
     (pipWindow.document.querySelector(".play") as HTMLButtonElement).onclick = () => togglePlay();
     (pipWindow.document.querySelector(".mute") as HTMLButtonElement).onclick = () => { video.muted = !video.muted; };
@@ -1128,6 +1285,49 @@ export function VideoPlayer({
         pipSubText.textContent = "";
         pipSubText.style.display = "none";
       }
+    }
+
+    const subBtn = pipWindow.document.querySelector(".sub-btn") as HTMLButtonElement | null;
+    if (subBtn) {
+      if (selectedSubUrl) {
+        subBtn.classList.add("active");
+      } else {
+        subBtn.classList.remove("active");
+      }
+    }
+
+    const subSelect = pipWindow.document.querySelector(".pip-sub-select") as HTMLSelectElement | null;
+    if (subSelect) {
+      const expectedOptionsCount = availableSubs.length + 1;
+      if (subSelect.options.length !== expectedOptionsCount) {
+        let html = '<option value="">Tắt phụ đề (Off)</option>';
+        if (availableSubs.length === 0) {
+          html = '<option value="">Phim có sẵn Vietsub (Hardsub)</option>';
+        } else {
+          availableSubs.forEach((sub) => {
+            html += `<option value="${sub.url}">${sub.displayName || `${sub.lang} - ${sub.fileName}`}</option>`;
+          });
+        }
+        subSelect.innerHTML = html;
+      }
+      if (subSelect.value !== (selectedSubUrl || "")) {
+        subSelect.value = selectedSubUrl || "";
+      }
+    }
+
+    const fontVal = pipWindow.document.querySelector(".pip-font-val") as HTMLElement | null;
+    if (fontVal) fontVal.textContent = `${subFontSize}px`;
+
+    const maskBtn = pipWindow.document.querySelector(".pip-mask-btn") as HTMLButtonElement | null;
+    if (maskBtn) {
+      maskBtn.textContent = maskHardsub ? "BẬT" : "TẮT";
+      maskBtn.style.background = maskHardsub ? "#f59e0b" : "rgba(255,255,255,0.1)";
+      maskBtn.style.color = maskHardsub ? "#020617" : "#cbd5e1";
+    }
+
+    const offsetVal = pipWindow.document.querySelector(".pip-offset-val") as HTMLElement | null;
+    if (offsetVal) {
+      offsetVal.textContent = subOffset > 0 ? `+${subOffset.toFixed(1)}s` : `${subOffset.toFixed(1)}s`;
     }
   }
 

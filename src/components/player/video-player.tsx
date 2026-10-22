@@ -255,6 +255,9 @@ export function VideoPlayer({
   const subWrapperRef = useRef<HTMLDivElement | null>(null);
   const isDraggingSubRef = useRef(false);
   const isDraggingPipSubRef = useRef(false);
+  const subXPercentRef = useRef(50);
+  const subBottomPercentRef = useRef(15);
+  const updateDocumentPictureInPictureUiRef = useRef<() => void>(() => {});
   const startDragXRef = useRef(0);
   const startDragYRef = useRef(0);
   const startXPercentRef = useRef(50);
@@ -614,6 +617,10 @@ export function VideoPlayer({
     if (requestResolutionKey) queueMicrotask(() => setLocalRequest(null));
   }, [requestResolutionKey]);
 
+  subXPercentRef.current = subXPercent;
+  subBottomPercentRef.current = subBottomPercent;
+  updateDocumentPictureInPictureUiRef.current = updateDocumentPictureInPictureUi;
+
   useEffect(() => {
     updateDocumentPictureInPictureUi();
   });
@@ -951,6 +958,7 @@ export function VideoPlayer({
           z-index: 45;
           text-align: center;
           user-select: none;
+          transition: none !important;
         }
         .pip-sub-text {
           display: none;
@@ -1135,17 +1143,21 @@ export function VideoPlayer({
     shell.append(overlaySlot);
     setPipContainer(overlaySlot);
 
+    const onPipTimeUpdate = () => {
+      updateDocumentPictureInPictureUiRef.current?.();
+    };
+
     const onClose = () => {
       videoSlotRef.current?.append(video);
       video.className = "h-full w-full object-contain";
-      video.removeEventListener("timeupdate", updateDocumentPictureInPictureUi);
+      video.removeEventListener("timeupdate", onPipTimeUpdate);
       documentPipWindowRef.current = null;
       isDraggingPipSubRef.current = false;
       setIsPictureInPicture(false);
       setPipContainer(null);
     };
 
-    video.addEventListener("timeupdate", updateDocumentPictureInPictureUi);
+    video.addEventListener("timeupdate", onPipTimeUpdate);
 
     const subBtn = pipWindow.document.querySelector(".sub-btn") as HTMLButtonElement;
     const subModal = pipWindow.document.querySelector(".pip-sub-modal") as HTMLElement;
@@ -1162,17 +1174,17 @@ export function VideoPlayer({
     const pipSubText = pipWindow.document.querySelector(".pip-sub-text") as HTMLElement;
 
     if (pipSubWrapper) {
-      pipSubWrapper.style.left = `${subXPercent}%`;
-      pipSubWrapper.style.bottom = `${subBottomPercent}%`;
+      pipSubWrapper.style.left = `${subXPercentRef.current}%`;
+      pipSubWrapper.style.bottom = `${subBottomPercentRef.current}%`;
     }
 
     let isDraggingPipSub = false;
     let pipStartX = 0;
     let pipStartY = 0;
-    let pipStartLeft = subXPercent;
-    let pipStartBottom = subBottomPercent;
-    let pipCurrentLeft = subXPercent;
-    let pipCurrentBottom = subBottomPercent;
+    let pipStartLeft = subXPercentRef.current;
+    let pipStartBottom = subBottomPercentRef.current;
+    let pipCurrentLeft = subXPercentRef.current;
+    let pipCurrentBottom = subBottomPercentRef.current;
 
     if (pipSubText && pipSubWrapper) {
       pipSubText.onpointerdown = (e) => {
@@ -1218,6 +1230,8 @@ export function VideoPlayer({
         try {
           pipSubText.releasePointerCapture(e.pointerId);
         } catch {}
+        subXPercentRef.current = pipCurrentLeft;
+        subBottomPercentRef.current = pipCurrentBottom;
         setSubXPercent(pipCurrentLeft);
         setSubBottomPercent(pipCurrentBottom);
         localStorage.setItem("pmovies_sub_x_percent", String(pipCurrentLeft));
@@ -1404,14 +1418,6 @@ export function VideoPlayer({
       const showCard = Boolean(locked && localRequest && localRequest.type !== "seek");
       requestCard.style.display = showCard ? "flex" : "none";
       requestText.textContent = showCard ? `You requested ${localRequest?.type}` : "";
-    }
-
-    const pipSubWrapper = pipWindow.document.querySelector(".pip-sub-wrapper") as HTMLElement | null;
-    if (pipSubWrapper && !isDraggingPipSubRef.current) {
-      const targetLeft = `${subXPercent}%`;
-      const targetBottom = `${subBottomPercent}%`;
-      if (pipSubWrapper.style.left !== targetLeft) pipSubWrapper.style.left = targetLeft;
-      if (pipSubWrapper.style.bottom !== targetBottom) pipSubWrapper.style.bottom = targetBottom;
     }
 
     const pipSubText = pipWindow.document.querySelector(".pip-sub-text") as HTMLElement | null;

@@ -1,7 +1,7 @@
 "use client";
 
 import Hls from "hls.js";
-import { Check, Flag, Loader2, Maximize, Minimize, Pause, PictureInPicture2, Play, Settings2, Volume2, VolumeX, X, LightbulbOff, Lightbulb, Subtitles, Zap, RotateCcw, RotateCw, ShieldAlert, Move } from "lucide-react";
+import { Check, CheckCircle2, Flag, Loader2, Maximize, Minimize, Pause, PictureInPicture2, Play, Settings2, Volume2, VolumeX, X, LightbulbOff, Lightbulb, Subtitles, Zap, RotateCcw, RotateCw, ShieldAlert, Move } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -1466,29 +1466,44 @@ export function VideoPlayer({
               </button>
             </div>
 
-            <div>
-              <select 
-                value={selectedSubUrl} 
-                onChange={(e) => setSelectedSubUrl(e.target.value)}
-                className="w-full rounded-lg border border-white/15 bg-black/80 px-2.5 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-400"
-              >
-                <option value="">Tắt phụ đề (Off)</option>
-                {Object.entries(
-                  availableSubs.reduce<Record<string, typeof availableSubs>>((acc, sub) => {
-                    (acc[sub.lang] = acc[sub.lang] || []).push(sub);
-                    return acc;
-                  }, {})
-                ).map(([langName, subs]) => (
-                  <optgroup key={langName} label={langName} className="bg-slate-900 text-cyan-300 font-bold">
-                    {subs.map((sub) => (
-                      <option key={sub.id} value={sub.url} className="text-white bg-slate-950 font-normal">
-                        {sub.displayName || `${sub.lang} - ${sub.fileName}`}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
+            {availableSubs.length === 0 ? (
+              <div className="rounded-xl border border-cyan-400/30 bg-cyan-950/40 p-3.5 space-y-2 text-xs">
+                <div className="flex items-center gap-2 font-bold text-cyan-300">
+                  <CheckCircle2 size={16} className="text-cyan-400 shrink-0" />
+                  <span>Phim đã có sẵn Vietsub trong video</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  Bản phim này đã được đội ngũ dịch gắn sẵn phụ đề tiếng Việt trực tiếp vào từng khung hình (Hardsub). Bạn chỉ cần bấm phát là xem được ngay!
+                </p>
+                <div className="pt-2 text-[10px] text-slate-400 border-t border-white/10">
+                  💡 Mục Cài đặt phụ đề dùng để chọn thêm file phụ đề rời (.srt) hoặc đổi ngôn ngữ (Anh, Hàn, Trung...) cho các phim quốc tế.
+                </div>
+              </div>
+            ) : (
+              <div>
+                <select 
+                  value={selectedSubUrl} 
+                  onChange={(e) => setSelectedSubUrl(e.target.value)}
+                  className="w-full rounded-lg border border-white/15 bg-black/80 px-2.5 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                >
+                  <option value="">Tắt phụ đề (Off)</option>
+                  {Object.entries(
+                    availableSubs.reduce<Record<string, typeof availableSubs>>((acc, sub) => {
+                      (acc[sub.lang] = acc[sub.lang] || []).push(sub);
+                      return acc;
+                    }, {})
+                  ).map(([langName, subs]) => (
+                    <optgroup key={langName} label={langName} className="bg-slate-900 text-cyan-300 font-bold">
+                      {subs.map((sub) => (
+                        <option key={sub.id} value={sub.url} className="text-white bg-slate-950 font-normal">
+                          {sub.displayName || `${sub.lang} - ${sub.fileName}`}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {selectedSubUrl && (
               <>

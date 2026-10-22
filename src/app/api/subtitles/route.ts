@@ -19,21 +19,33 @@ async function resolveImdbId(title: string, year?: string | number | null, isSer
       .replace(/season \d+/i, "")
       .trim();
 
+    const searchCandidates = [cleanTitle];
+    if (cleanTitle.includes(":")) {
+      const part = cleanTitle.split(":")[0].trim();
+      if (part.length >= 3) searchCandidates.push(part);
+    }
+    if (cleanTitle.includes("-")) {
+      const part = cleanTitle.split("-")[0].trim();
+      if (part.length >= 3 && !searchCandidates.includes(part)) searchCandidates.push(part);
+    }
+
     const types = isSeries ? ["series", "movie"] : ["movie", "series"];
-    for (const type of types) {
-      const endpoint = `https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(cleanTitle)}.json`;
-      const res = await fetch(endpoint, {
-        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125" },
-        next: { revalidate: 86400 },
-      });
-      if (res.ok) {
-        const data = await res.json() as { metas?: Array<{ id: string; name: string; year?: string | number }> };
-        if (data.metas && data.metas.length > 0) {
-          if (year) {
-            const match = data.metas.find((m) => String(m.year) === String(year));
-            if (match) return match.id;
+    for (const q of searchCandidates) {
+      for (const type of types) {
+        const endpoint = `https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(q)}.json`;
+        const res = await fetch(endpoint, {
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125" },
+          next: { revalidate: 86400 },
+        });
+        if (res.ok) {
+          const data = await res.json() as { metas?: Array<{ id: string; name: string; year?: string | number }> };
+          if (data.metas && data.metas.length > 0) {
+            if (year) {
+              const match = data.metas.find((m) => String(m.year) === String(year));
+              if (match) return match.id;
+            }
+            return data.metas[0].id;
           }
-          return data.metas[0].id;
         }
       }
     }

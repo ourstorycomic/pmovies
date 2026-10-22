@@ -136,10 +136,31 @@ export function VideoPlayer({
   const [availableSubs, setAvailableSubs] = useState<Array<{ id: string; lang: string; code: string; fileName: string; displayName?: string; releaseTag?: string; url: string }>>([]);
   const [selectedSubUrl, setSelectedSubUrl] = useState<string>("");
   const [isSubMenuOpen, setIsSubMenuOpen] = useState(false);
+  const isSubMenuOpenRef = useRef(false);
+  isSubMenuOpenRef.current = isSubMenuOpen;
+  const subMenuRef = useRef<HTMLDivElement | null>(null);
+  const subButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!isSubMenuOpen) return;
+    const handleOutsidePointer = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (subMenuRef.current?.contains(target)) return;
+      if (subButtonRef.current?.contains(target)) return;
+      setIsSubMenuOpen(false);
+      if (containerRef.current?.contains(target)) {
+        e.stopPropagation();
+      }
+    };
+    document.addEventListener("pointerdown", handleOutsidePointer, true);
+    return () => document.removeEventListener("pointerdown", handleOutsidePointer, true);
+  }, [isSubMenuOpen]);
+
   const [maskHardsub, setMaskHardsub] = useState(false);
   const [subPosition, setSubPosition] = useState<"bottom" | "overlay" | "top">("bottom");
   const [subXPercent, setSubXPercent] = useState<number>(50);
-  const [subBottomPercent, setSubBottomPercent] = useState<number>(8);
+  const [subBottomPercent, setSubBottomPercent] = useState<number>(15);
   const [subFontSize, setSubFontSize] = useState<number>(18);
   const [subOffset, setSubOffset] = useState(0);
   const [subSpeed, setSubSpeed] = useState<number>(1.0);
@@ -207,9 +228,9 @@ export function VideoPlayer({
   const startDragXRef = useRef(0);
   const startDragYRef = useRef(0);
   const startXPercentRef = useRef(50);
-  const startBottomPercentRef = useRef(8);
+  const startBottomPercentRef = useRef(15);
   const currentXPercentRef = useRef(50);
-  const currentBottomPercentRef = useRef(8);
+  const currentBottomPercentRef = useRef(15);
   const rafSubDragRef = useRef<number | null>(null);
 
   const handleSubPointerDown = (e: React.PointerEvent) => {
@@ -237,7 +258,7 @@ export function VideoPlayer({
 
     const deltaY = startDragYRef.current - e.clientY;
     const deltaYPercent = (deltaY / containerHeight) * 100;
-    const nextY = Math.max(2, Math.min(88, Math.round((startBottomPercentRef.current + deltaYPercent) * 10) / 10));
+    const nextY = Math.max(5, Math.min(88, Math.round((startBottomPercentRef.current + deltaYPercent) * 10) / 10));
 
     currentXPercentRef.current = nextX;
     currentBottomPercentRef.current = nextY;
@@ -293,7 +314,7 @@ export function VideoPlayer({
       const savedBottom = localStorage.getItem("pmovies_sub_bottom_percent");
       if (savedBottom !== null) {
         const val = Number(savedBottom);
-        if (!isNaN(val) && val >= 2 && val <= 88) setSubBottomPercent(val);
+        if (!isNaN(val) && val >= 2 && val <= 88) setSubBottomPercent(val <= 8 ? 15 : val);
       }
       const savedSize = localStorage.getItem("pmovies_sub_font_size");
       if (savedSize !== null) {
@@ -721,6 +742,10 @@ export function VideoPlayer({
   }
 
   function togglePlay() {
+    if (isSubMenuOpen) {
+      setIsSubMenuOpen(false);
+      return;
+    }
     const video = videoRef.current;
     if (!video) return;
     requestOrRun({ type: video.paused ? "play" : "pause", time: video.currentTime }, () => {
@@ -990,6 +1015,10 @@ export function VideoPlayer({
         showControlsTemporarily(); // Re-trigger the timer instead of hiding
         return;
       }
+      if (isSubMenuOpenRef.current) {
+        showControlsTemporarily();
+        return;
+      }
       setControlsVisible(false);
     }, 2600);
   }
@@ -999,6 +1028,11 @@ export function VideoPlayer({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Escape" && isSubMenuOpenRef.current) {
+        e.preventDefault();
+        setIsSubMenuOpen(false);
+        return;
+      }
       if (
         document.activeElement?.tagName === "INPUT" ||
         document.activeElement?.tagName === "TEXTAREA" ||
@@ -1208,11 +1242,11 @@ export function VideoPlayer({
           ref={subWrapperRef}
           style={{
             left: `${subXPercent}%`,
-            bottom: `${subBottomPercent}%`,
+            bottom: controlsVisible ? `max(84px, ${subBottomPercent}%)` : `max(20px, ${subBottomPercent}%)`,
             transform: "translateX(-50%)",
           }}
           className={`pointer-events-none absolute z-25 flex justify-center w-max max-w-[94%] sm:max-w-4xl ${
-            isDraggingSub ? "transition-none pointer-events-auto" : "transition-[left,bottom] duration-150 ease-out"
+            isDraggingSub ? "transition-none pointer-events-auto" : "transition-[left,bottom] duration-200 ease-out"
           }`}
         >
           <div
@@ -1294,7 +1328,7 @@ export function VideoPlayer({
           {pipContainer && createPortal(fullscreenOverlay, pipContainer)}
         </>
       )}
-      <div className={`absolute inset-x-0 bottom-0 z-20 space-y-2 p-2 transition duration-300 sm:space-y-3 sm:p-4 ${controlsVisible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0"}`}>
+      <div className={`absolute inset-x-0 bottom-0 z-30 space-y-2 p-2 transition duration-300 sm:space-y-3 sm:p-4 ${controlsVisible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0"}`}>
         <div 
            onClick={handleTimeline} 
            onMouseMove={handleTimelineHover}
@@ -1364,11 +1398,6 @@ export function VideoPlayer({
             className="pmovies-range hidden w-20 sm:block lg:w-24" 
             aria-label="Âm lượng"
           />
-          {!locked && (
-            <select value={speed} onChange={(event) => changeSpeed(Number(event.target.value))} className="hidden rounded-md border border-white/10 bg-black/60 px-2 py-1 text-xs sm:block sm:text-sm">
-              {[0.5, 0.75, 1, 1.25, 1.5, 2].map((item) => <option key={item} value={item}>{item}x</option>)}
-            </select>
-          )}
           <select value={level} onChange={(event) => changeLevel(Number(event.target.value))} className="min-w-0 max-w-20 rounded-md border border-white/10 bg-black/60 px-1 py-1 text-xs sm:max-w-none sm:px-2 sm:text-sm">
             <option value={-1}>Auto</option>
             {levels.map((item) => <option key={item.index} value={item.index}>{item.height}p</option>)}
@@ -1379,281 +1408,15 @@ export function VideoPlayer({
             </button>
           )}
           <div className="ml-auto flex items-center gap-1.5 sm:gap-3">
-
-
-
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsSubMenuOpen((v) => !v)}
-                className={`shrink-0 rounded-md p-2 transition ${selectedSubUrl ? "bg-cyan-400/20 text-cyan-300 ring-1 ring-cyan-400/40" : "bg-white/10 text-white hover:bg-white/20"}`}
-                title="Cài đặt phụ đề (Subtitles)"
-              >
-                <Subtitles size={18} />
-              </button>
-
-              {isSubMenuOpen && (
-                <>
-                  {/* Backdrop để ấn ra ngoài thì tự động đóng bảng */}
-                  <div 
-                    className="fixed inset-0 z-40 bg-black/60 sm:bg-black/30 backdrop-blur-xs transition-opacity" 
-                    onClick={() => setIsSubMenuOpen(false)} 
-                    aria-label="Đóng cài đặt phụ đề"
-                  />
-                  <div 
-                    className="fixed sm:absolute bottom-0 sm:bottom-full sm:mb-3 left-0 right-0 sm:left-auto sm:right-0 z-50 w-full sm:w-80 max-h-[85vh] sm:max-h-[440px] overflow-y-auto rounded-t-2xl sm:rounded-xl border border-white/15 bg-slate-950/95 p-4 sm:p-3.5 text-white shadow-2xl backdrop-blur-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 text-xs space-y-3 custom-scrollbar"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {/* Thanh kéo nhỏ trên điện thoại */}
-                    <div className="w-10 h-1 bg-white/20 rounded-full mx-auto -mt-1 mb-2 sm:hidden" />
-
-                    <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                      <span className="font-bold text-slate-200 flex items-center gap-1.5 text-sm sm:text-xs">
-                        <Subtitles size={16} className="text-cyan-400" /> Cài đặt phụ đề
-                      </span>
-                      <button 
-                        type="button" 
-                        onClick={() => setIsSubMenuOpen(false)}
-                        className="rounded-full p-1.5 hover:bg-white/10 text-slate-400 hover:text-white transition active:scale-95"
-                        title="Đóng (hoặc bấm ra ngoài)"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-
-                    <div>
-                      <select 
-                        value={selectedSubUrl} 
-                        onChange={(e) => setSelectedSubUrl(e.target.value)}
-                        className="w-full rounded-lg border border-white/15 bg-black/80 px-2.5 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-400"
-                      >
-                        <option value="">Tắt phụ đề (Off)</option>
-                        {Object.entries(
-                          availableSubs.reduce<Record<string, typeof availableSubs>>((acc, sub) => {
-                            (acc[sub.lang] = acc[sub.lang] || []).push(sub);
-                            return acc;
-                          }, {})
-                        ).map(([langName, subs]) => (
-                          <optgroup key={langName} label={langName} className="bg-slate-900 text-cyan-300 font-bold">
-                            {subs.map((sub) => (
-                              <option key={sub.id} value={sub.url} className="text-white bg-slate-950 font-normal">
-                                {sub.displayName || `${sub.lang} - ${sub.fileName}`}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
-                    </div>
-
-                    {selectedSubUrl && (
-                      <>
-                        <div className="flex items-center justify-between py-0.5">
-                          <span className="text-slate-300 font-medium">Cỡ chữ</span>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const next = Math.max(12, subFontSize - 2);
-                                setSubFontSize(next);
-                                localStorage.setItem("pmovies_sub_font_size", String(next));
-                              }}
-                              className="h-8 w-8 sm:h-7 sm:w-7 rounded-lg bg-white/10 font-bold hover:bg-white/20 flex items-center justify-center text-slate-200 text-base sm:text-sm active:scale-95 transition"
-                              title="Thu nhỏ"
-                            >
-                              -
-                            </button>
-                            <span className="w-10 text-center font-mono font-bold text-cyan-300 text-sm">{subFontSize}px</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const next = Math.min(44, subFontSize + 2);
-                                setSubFontSize(next);
-                                localStorage.setItem("pmovies_sub_font_size", String(next));
-                              }}
-                              className="h-8 w-8 sm:h-7 sm:w-7 rounded-lg bg-white/10 font-bold hover:bg-white/20 flex items-center justify-center text-slate-200 text-base sm:text-sm active:scale-95 transition"
-                              title="Phóng to"
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Lệch giờ (Sync offset) */}
-                        <div className="rounded-xl bg-white/5 p-3 border border-white/10 space-y-2.5">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="text-slate-200 font-semibold">Chỉnh lệch giờ (Sync)</span>
-                            <div className="flex items-center gap-1.5">
-                              <input
-                                type="number"
-                                step="0.5"
-                                value={subOffset}
-                                onChange={(e) => updateSubOffset(Number(e.target.value) || 0)}
-                                className="w-16 rounded-md bg-black/80 border border-cyan-400/40 text-center font-mono text-cyan-300 font-bold px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-400"
-                                title="Nhập số giây trực tiếp (ví dụ: 30 hoặc -15)"
-                              />
-                              <span className="text-slate-400 text-[11px]">giây</span>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-7 gap-1 text-[11px] font-semibold text-center">
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(Number((subOffset - 5).toFixed(1)))}
-                              className="rounded-lg bg-white/10 py-1.5 hover:bg-white/20 text-slate-300 active:scale-95 transition"
-                              title="Lùi 5s"
-                            >
-                              -5s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(Number((subOffset - 1).toFixed(1)))}
-                              className="rounded-lg bg-white/10 py-1.5 hover:bg-white/20 text-slate-300 active:scale-95 transition"
-                              title="Lùi 1s"
-                            >
-                              -1s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(Number((subOffset - 0.5).toFixed(1)))}
-                              className="rounded-lg bg-white/10 py-1.5 hover:bg-white/20 text-slate-300 active:scale-95 transition"
-                              title="Lùi 0.5s"
-                            >
-                              -0.5s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(0)}
-                              className={`rounded-lg py-1.5 font-bold active:scale-95 transition ${
-                                subOffset === 0
-                                  ? "bg-cyan-500/30 text-cyan-200 border border-cyan-400/40"
-                                  : "bg-white/10 hover:bg-white/20 text-slate-200"
-                              }`}
-                              title="Đặt lại về 0s"
-                            >
-                              0s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(Number((subOffset + 0.5).toFixed(1)))}
-                              className="rounded-lg bg-white/10 py-1.5 hover:bg-white/20 text-slate-300 active:scale-95 transition"
-                              title="Tiến 0.5s"
-                            >
-                              +0.5s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(Number((subOffset + 1).toFixed(1)))}
-                              className="rounded-lg bg-white/10 py-1.5 hover:bg-white/20 text-slate-300 active:scale-95 transition"
-                              title="Tiến 1s"
-                            >
-                              +1s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(Number((subOffset + 5).toFixed(1)))}
-                              className="rounded-lg bg-white/10 py-1.5 hover:bg-white/20 text-slate-300 active:scale-95 transition"
-                              title="Tiến 5s"
-                            >
-                              +5s
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2 text-xs font-semibold pt-0.5">
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(Number((subOffset - 30).toFixed(1)))}
-                              className="rounded-lg bg-amber-400/10 py-2 hover:bg-amber-400/20 text-amber-300 active:scale-95 transition border border-amber-400/20 text-center"
-                              title="Lùi 30 giây"
-                            >
-                              Lùi 30s (-30s)
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateSubOffset(Number((subOffset + 30).toFixed(1)))}
-                              className="rounded-lg bg-amber-400/10 py-2 hover:bg-amber-400/20 text-amber-300 active:scale-95 transition border border-amber-400/20 text-center"
-                              title="Tiến 30 giây"
-                            >
-                              Tiến 30s (+30s)
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-300">Che sub cũ</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMaskHardsub((prev) => {
-                                const next = !prev;
-                                localStorage.setItem("pmovies_mask_hardsub", String(next));
-                                return next;
-                              });
-                            }}
-                            className={`rounded-full px-3 py-1 text-[11px] font-bold transition active:scale-95 ${
-                              maskHardsub ? "bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20" : "bg-white/10 text-slate-300 hover:bg-white/20"
-                            }`}
-                          >
-                            {maskHardsub ? "BẬT" : "TẮT"}
-                          </button>
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-300">Vị trí</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSubXPercent(50);
-                              setSubBottomPercent(8);
-                              localStorage.setItem("pmovies_sub_x_percent", "50");
-                              localStorage.setItem("pmovies_sub_bottom_percent", "8");
-                            }}
-                            className="rounded-md bg-white/10 px-2.5 py-1 text-[10px] font-semibold text-slate-300 hover:bg-white/20 hover:text-white active:scale-95 transition"
-                          >
-                            Đặt lại giữa
-                          </button>
-                        </div>
-                      </>
-                    )}
-
-                    <div className="flex items-center justify-between border-t border-white/10 pt-2.5">
-                      <span className="text-slate-300 flex items-center gap-1.5">
-                        <ShieldAlert size={14} className={maskAdBanner ? "text-amber-400" : "text-slate-400"} /> Che banner QC
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        {maskAdBanner && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const next = adBannerPos === "top" ? "bottom" : "top";
-                              setAdBannerPos(next);
-                              localStorage.setItem("pmovies_ad_banner_pos", next);
-                            }}
-                            className="text-[10px] text-cyan-300 bg-white/10 px-2 py-1 rounded-md font-semibold hover:bg-white/20 active:scale-95 transition"
-                          >
-                            {adBannerPos === "top" ? "Mép trên" : "Mép dưới"}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMaskAdBanner((prev) => {
-                              const next = !prev;
-                              localStorage.setItem("pmovies_mask_ad_banner", String(next));
-                              return next;
-                            });
-                          }}
-                          className={`rounded-full px-3 py-1 text-[11px] font-bold transition active:scale-95 ${
-                            maskAdBanner ? "bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20" : "bg-white/10 text-slate-300 hover:bg-white/20"
-                          }`}
-                        >
-                          {maskAdBanner ? "BẬT" : "TẮT"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
+            <button
+              ref={subButtonRef}
+              type="button"
+              onClick={() => setIsSubMenuOpen((v) => !v)}
+              className={`shrink-0 rounded-md p-2 transition ${selectedSubUrl ? "bg-cyan-400/20 text-cyan-300 ring-1 ring-cyan-400/40" : "bg-white/10 text-white hover:bg-white/20"}`}
+              title="Cài đặt phụ đề (Subtitles)"
+            >
+              <Subtitles size={18} />
+            </button>
 
             <button type="button" onClick={toggleTheaterMode} className="hidden sm:block shrink-0 rounded-md bg-white/10 p-2 hover:bg-white/20" title={theaterMode ? "Bật đèn" : "Tắt đèn"}>
               {theaterMode ? <Lightbulb size={18} className="text-amber-200" /> : <LightbulbOff size={18} />}
@@ -1664,6 +1427,277 @@ export function VideoPlayer({
           </div>
         </div>
       </div>
+
+      {/* Hộp thoại cài đặt phụ đề & Backdrop toàn màn hình */}
+      {isSubMenuOpen && (
+        <>
+          <div 
+            className="absolute inset-0 z-40 bg-black/60 sm:bg-black/35 backdrop-blur-xs transition-opacity animate-in fade-in duration-150" 
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsSubMenuOpen(false);
+            }} 
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              setIsSubMenuOpen(false);
+            }}
+            aria-label="Đóng cài đặt phụ đề"
+          />
+          <div 
+            ref={subMenuRef}
+            className="fixed sm:absolute bottom-0 sm:bottom-16 left-0 right-0 sm:left-auto sm:right-4 z-50 w-full sm:w-80 max-h-[85vh] sm:max-h-[460px] overflow-y-auto rounded-t-2xl sm:rounded-xl border border-white/15 bg-slate-950/95 p-4 sm:p-3.5 text-white shadow-2xl backdrop-blur-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 text-xs space-y-3 custom-scrollbar"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            {/* Thanh kéo nhỏ trên điện thoại */}
+            <div className="w-10 h-1 bg-white/20 rounded-full mx-auto -mt-1 mb-2 sm:hidden" />
+
+            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+              <span className="font-bold text-slate-200 flex items-center gap-1.5 text-sm sm:text-xs">
+                <Subtitles size={16} className="text-cyan-400" /> Cài đặt phụ đề
+              </span>
+              <button 
+                type="button" 
+                onClick={() => setIsSubMenuOpen(false)}
+                className="rounded-full p-1.5 hover:bg-white/10 text-slate-400 hover:text-white transition active:scale-95"
+                title="Đóng (hoặc bấm ra ngoài)"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div>
+              <select 
+                value={selectedSubUrl} 
+                onChange={(e) => setSelectedSubUrl(e.target.value)}
+                className="w-full rounded-lg border border-white/15 bg-black/80 px-2.5 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-400"
+              >
+                <option value="">Tắt phụ đề (Off)</option>
+                {Object.entries(
+                  availableSubs.reduce<Record<string, typeof availableSubs>>((acc, sub) => {
+                    (acc[sub.lang] = acc[sub.lang] || []).push(sub);
+                    return acc;
+                  }, {})
+                ).map(([langName, subs]) => (
+                  <optgroup key={langName} label={langName} className="bg-slate-900 text-cyan-300 font-bold">
+                    {subs.map((sub) => (
+                      <option key={sub.id} value={sub.url} className="text-white bg-slate-950 font-normal">
+                        {sub.displayName || `${sub.lang} - ${sub.fileName}`}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+
+            {selectedSubUrl && (
+              <>
+                <div className="flex items-center justify-between py-0.5">
+                  <span className="text-slate-300 font-medium">Cỡ chữ</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = Math.max(12, subFontSize - 2);
+                        setSubFontSize(next);
+                        localStorage.setItem("pmovies_sub_font_size", String(next));
+                      }}
+                      className="h-8 w-8 sm:h-7 sm:w-7 rounded-lg bg-white/10 font-bold hover:bg-white/20 flex items-center justify-center text-slate-200 text-base sm:text-sm active:scale-95 transition"
+                      title="Thu nhỏ"
+                    >
+                      -
+                    </button>
+                    <span className="w-10 text-center font-mono font-bold text-cyan-300 text-sm">{subFontSize}px</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = Math.min(44, subFontSize + 2);
+                        setSubFontSize(next);
+                        localStorage.setItem("pmovies_sub_font_size", String(next));
+                      }}
+                      className="h-8 w-8 sm:h-7 sm:w-7 rounded-lg bg-white/10 font-bold hover:bg-white/20 flex items-center justify-center text-slate-200 text-base sm:text-sm active:scale-95 transition"
+                      title="Phóng to"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* Lệch giờ (Sync offset) */}
+                <div className="rounded-xl bg-white/5 p-3 border border-white/10 space-y-2.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-200 font-semibold">Chỉnh lệch giờ (Sync)</span>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={subOffset}
+                        onChange={(e) => updateSubOffset(Number(e.target.value) || 0)}
+                        className="w-16 rounded-md bg-black/80 border border-cyan-400/40 text-center font-mono text-cyan-300 font-bold px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                        title="Nhập số giây trực tiếp (ví dụ: 30 hoặc -15)"
+                      />
+                      <span className="text-slate-400 text-[11px]">giây</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1 text-[11px] font-semibold text-center">
+                    <button
+                      type="button"
+                      onClick={() => updateSubOffset(Number((subOffset - 5).toFixed(1)))}
+                      className="rounded-lg bg-white/10 py-1.5 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                      title="Lùi 5s"
+                    >
+                      -5s
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateSubOffset(Number((subOffset - 1).toFixed(1)))}
+                      className="rounded-lg bg-white/10 py-1.5 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                      title="Lùi 1s"
+                    >
+                      -1s
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateSubOffset(Number((subOffset - 0.5).toFixed(1)))}
+                      className="rounded-lg bg-white/10 py-1.5 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                      title="Lùi 0.5s"
+                    >
+                      -0.5s
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateSubOffset(0)}
+                      className={`rounded-lg py-1.5 font-bold active:scale-95 transition ${
+                        subOffset === 0
+                          ? "bg-cyan-500/30 text-cyan-200 border border-cyan-400/40"
+                          : "bg-white/10 hover:bg-white/20 text-slate-200"
+                      }`}
+                      title="Đặt lại về 0s"
+                    >
+                      0s
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateSubOffset(Number((subOffset + 0.5).toFixed(1)))}
+                      className="rounded-lg bg-white/10 py-1.5 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                      title="Tiến 0.5s"
+                    >
+                      +0.5s
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateSubOffset(Number((subOffset + 1).toFixed(1)))}
+                      className="rounded-lg bg-white/10 py-1.5 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                      title="Tiến 1s"
+                    >
+                      +1s
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateSubOffset(Number((subOffset + 5).toFixed(1)))}
+                      className="rounded-lg bg-white/10 py-1.5 hover:bg-white/20 text-slate-300 active:scale-95 transition"
+                      title="Tiến 5s"
+                    >
+                      +5s
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs font-semibold pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => updateSubOffset(Number((subOffset - 30).toFixed(1)))}
+                      className="rounded-lg bg-amber-400/10 py-2 hover:bg-amber-400/20 text-amber-300 active:scale-95 transition border border-amber-400/20 text-center"
+                      title="Lùi 30 giây"
+                    >
+                      Lùi 30s (-30s)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateSubOffset(Number((subOffset + 30).toFixed(1)))}
+                      className="rounded-lg bg-amber-400/10 py-2 hover:bg-amber-400/20 text-amber-300 active:scale-95 transition border border-amber-400/20 text-center"
+                      title="Tiến 30 giây"
+                    >
+                      Tiến 30s (+30s)
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-300">Che sub cũ</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMaskHardsub((prev) => {
+                        const next = !prev;
+                        localStorage.setItem("pmovies_mask_hardsub", String(next));
+                        return next;
+                      });
+                    }}
+                    className={`rounded-full px-3 py-1 text-[11px] font-bold transition active:scale-95 ${
+                      maskHardsub ? "bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20" : "bg-white/10 text-slate-300 hover:bg-white/20"
+                    }`}
+                  >
+                    {maskHardsub ? "BẬT" : "TẮT"}
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-300">Vị trí</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSubXPercent(50);
+                      setSubBottomPercent(15);
+                      localStorage.setItem("pmovies_sub_x_percent", "50");
+                      localStorage.setItem("pmovies_sub_bottom_percent", "15");
+                    }}
+                    className="rounded-md bg-white/10 px-2.5 py-1 text-[10px] font-semibold text-slate-300 hover:bg-white/20 hover:text-white active:scale-95 transition"
+                  >
+                    Đặt lại giữa
+                  </button>
+                </div>
+              </>
+            )}
+
+            <div className="flex items-center justify-between border-t border-white/10 pt-2.5">
+              <span className="text-slate-300 flex items-center gap-1.5">
+                <ShieldAlert size={14} className={maskAdBanner ? "text-amber-400" : "text-slate-400"} /> Che banner QC
+              </span>
+              <div className="flex items-center gap-1.5">
+                {maskAdBanner && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = adBannerPos === "top" ? "bottom" : "top";
+                      setAdBannerPos(next);
+                      localStorage.setItem("pmovies_ad_banner_pos", next);
+                    }}
+                    className="text-[10px] text-cyan-300 bg-white/10 px-2 py-1 rounded-md font-semibold hover:bg-white/20 active:scale-95 transition"
+                  >
+                    {adBannerPos === "top" ? "Mép trên" : "Mép dưới"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMaskAdBanner((prev) => {
+                      const next = !prev;
+                      localStorage.setItem("pmovies_mask_ad_banner", String(next));
+                      return next;
+                    });
+                  }}
+                  className={`rounded-full px-3 py-1 text-[11px] font-bold transition active:scale-95 ${
+                    maskAdBanner ? "bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20" : "bg-white/10 text-slate-300 hover:bg-white/20"
+                  }`}
+                >
+                  {maskAdBanner ? "BẬT" : "TẮT"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
       </div>
     </>
   );

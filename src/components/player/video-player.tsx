@@ -293,7 +293,13 @@ export function VideoPlayer({
       const savedOffset = localStorage.getItem(`pmovies_sub_offset:${resumeKey}`);
       if (savedOffset !== null) {
         const val = Number(savedOffset);
-        if (!isNaN(val)) setSubOffset(val);
+        // If saved offset is unreasonably extreme (e.g. < -40s or > 90s, likely accidental misclick), reset to 0
+        if (!isNaN(val) && val >= -40 && val <= 90) {
+          setSubOffset(val);
+        } else {
+          setSubOffset(0);
+          localStorage.removeItem(`pmovies_sub_offset:${resumeKey}`);
+        }
       } else {
         setSubOffset(0);
       }
@@ -1356,11 +1362,25 @@ export function VideoPlayer({
                 .filter((ad) => currentTime >= ad.end)
                 .reduce((acc, ad) => acc + (ad.end - ad.start), 0);
               
-              if (currentAutoAd > 0 && subOffset === 0) {
+              if (subOffset !== 0) {
+                return (
+                  <button
+                    type="button"
+                    onClick={() => updateSubOffset(0)}
+                    className="shrink-0 rounded-md px-2 py-1.5 text-[11px] font-bold border transition flex items-center gap-1 bg-amber-400/20 text-amber-300 border-amber-400/50 shadow-sm hover:bg-amber-400/30 active:scale-95"
+                    title="Bấm để ĐẶT LẠI VỀ 0s và BẬT TỰ ĐỘNG SYNC"
+                  >
+                    <RotateCcw size={12} />
+                    <span>Đặt lại 0s ({subOffset > 0 ? `+${subOffset}s` : `${subOffset}s`})</span>
+                  </button>
+                );
+              }
+
+              if (currentAutoAd > 0) {
                 return (
                   <span
                     className="shrink-0 rounded-md px-2 py-1 text-[10px] font-bold border border-emerald-400/40 bg-emerald-500/20 text-emerald-300 flex items-center gap-1 shadow-sm"
-                    title={`Hệ thống đã tự động bù ${Math.round(currentAutoAd)}s quảng cáo cho phụ đề`}
+                    title={`Hệ thống đang tự động bù ${Math.round(currentAutoAd)}s quảng cáo cho phụ đề`}
                   >
                     <Zap size={11} className="fill-emerald-400 text-emerald-400" />
                     <span>Auto Sync ({Math.round(currentAutoAd)}s)</span>
@@ -1371,16 +1391,12 @@ export function VideoPlayer({
               return (
                 <button
                   type="button"
-                  onClick={() => updateSubOffset(Number((subOffset === 30 ? 0 : 30).toFixed(1)))}
-                  className={`shrink-0 rounded-md px-2 py-1.5 text-[11px] font-bold border transition flex items-center gap-1 ${
-                    subOffset !== 0
-                      ? "bg-amber-400/20 text-amber-300 border-amber-400/50 shadow-sm"
-                      : "bg-white/10 text-slate-300 border-white/10 hover:bg-white/20 hover:text-white"
-                  }`}
-                  title={subOffset !== 0 ? `Đang lệch: ${subOffset > 0 ? `+${subOffset}s` : `${subOffset}s`}. Bấm để đổi về 0s` : "Bấm 1-click để bù 30s quảng cáo chèn phim"}
+                  onClick={() => updateSubOffset(30)}
+                  className="shrink-0 rounded-md px-2 py-1.5 text-[11px] font-bold border transition flex items-center gap-1 bg-white/10 text-slate-300 border-white/10 hover:bg-white/20 hover:text-white active:scale-95"
+                  title="Bấm 1-click để bù 30s quảng cáo chèn phim"
                 >
-                  <Zap size={12} className={subOffset !== 0 ? "fill-amber-300" : ""} />
-                  <span>{subOffset !== 0 ? `${subOffset > 0 ? `+${subOffset}s` : `${subOffset}s`}` : "+30s QC"}</span>
+                  <Zap size={12} className="fill-amber-300 text-amber-300" />
+                  <span>+30s QC</span>
                 </button>
               );
             })()}
@@ -1485,6 +1501,16 @@ export function VideoPlayer({
                             <span className="text-slate-400 text-[10px]">giây</span>
                           </div>
                         </div>
+
+                        <button
+                          type="button"
+                          onClick={() => updateSubOffset(0)}
+                          className="w-full py-1.5 text-[11px] font-bold rounded-md bg-emerald-500/25 text-emerald-300 border border-emerald-400/40 hover:bg-emerald-500/35 flex items-center justify-center gap-1.5 transition active:scale-98 shadow-sm"
+                          title="Bấm để kích hoạt tính năng tự động dò và bù giờ quảng cáo thông minh"
+                        >
+                          <Zap size={13} className="fill-emerald-400 text-emerald-400 animate-pulse" />
+                          <span>Bật Tự Động Nhận Biết (Auto-Sync)</span>
+                        </button>
 
                         <div className="space-y-1">
                           <div className="grid grid-cols-5 gap-1 text-[11px] font-semibold">

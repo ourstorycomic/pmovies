@@ -365,11 +365,10 @@ export function VideoPlayer({
         currentBlock.duration = (lastFrag.start + (lastFrag.duration || 0)) - currentBlock.start;
         blocks.push({ start: currentBlock.start, end: currentBlock.start + currentBlock.duration, duration: currentBlock.duration });
         
-        // Filter out blocks that look like inserted ads (duration 5s-90s)
-        const ads = blocks.filter(b => b.duration >= 5 && b.duration <= 90);
-        if (ads.length > 0) {
-          setDetectedAds(ads.map(a => ({ start: a.start, end: a.end })));
-        }
+        // Commercial ads inserted into HLS streams are standard clips (15s, 30s, 45s, 60s)
+        // Micro-splices under 14s are intro cuts/chapter splices, not commercial ads.
+        const ads = blocks.filter(b => b.duration >= 14 && b.duration <= 90);
+        setDetectedAds(ads.map(a => ({ start: a.start, end: a.end })));
       };
 
       hls.on(Hls.Events.LEVEL_LOADED, updateDetectedAds);
